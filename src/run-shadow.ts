@@ -26,10 +26,10 @@ async function main() {
 
   logger.info('=== Polymarket MM Strategy — Shadow Mode ===');
   logger.info('Mode: shadow (calculating quotes, NOT placing orders)');
+  logger.info('Data source: WebSocket live stream');
 
-  await telegram.sendMessage('🚀 <b>Polymarket Bot started</b>\nMode: SHADOW\nWatching markets via WebSocket...');
+  await telegram.sendMessage('🚀 <b>Polymarket Bot started</b>\nMode: SHADOW\nData: WebSocket live stream');
 
-  // Load markets once
   let markets: MarketState[] = [];
   let eligible: MarketState[] = [];
   const books = new Map<string, BookState>();
@@ -46,12 +46,16 @@ async function main() {
 
   const tokenIds = eligible.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean);
 
-  // Fallback: fetch initial books via REST
+  // Pre-fetch initial books via REST for immediate evaluation
   for (const market of eligible.slice(0, 5)) {
     try {
       if (market.yesTokenId) {
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
         books.set(market.yesTokenId, book);
+      }
+      if (market.noTokenId) {
+        const book = await bookClient.fetchBook(market.conditionId, market.noTokenId);
+        books.set(market.noTokenId, book);
       }
     } catch (err) {
       logger.warn('Initial book fetch failed', { conditionId: market.conditionId, error: String(err) });
@@ -117,7 +121,7 @@ async function main() {
 
         logger.trace(trace);
 
-        // Telegram cooldown
+        // Telegram cooldown to avoid spam
         const alertKey = `${market.conditionId}-${side}`;
         const last = lastAlert.get(alertKey) || 0;
         if (Date.now() - last > TELEGRAM_COOLDOWN_MS) {
@@ -136,7 +140,12 @@ async function main() {
     }
   }
 
-  // Evaluate on book updates
+  // Evaluate all markets with initial books
+  for (const market of eligible.slice(0, 5)) {
+    evaluateMarket(market);
+  }
+
+  // WebSocket streaming — no polling
   const ws = new WsMarketStream(
     'wss://ws-subscriptions-clob.polymarket.com/ws/market',
     (update) => {
@@ -151,14 +160,7 @@ async function main() {
 
   ws.connect(tokenIds.slice(0, 10)); // limit to 10 tokens for WS
 
-  // Also evaluate periodically as fallback
-  setInterval(() => {
-    for (const market of eligible.slice(0, 3)) {
-      evaluateMarket(market);
-    }
-  }, 30000);
-
-  logger.info('Shadow mode active. Press Ctrl+C to stop.');
+  logger.info('Shadow mode active via WebSocket. Press Ctrl+C to stop.');
 }
 
 main().catch(err => {
