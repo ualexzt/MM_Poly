@@ -13,7 +13,7 @@ import { KillSwitch } from './risk/kill-switch';
 import { isBookStale } from './risk/stale-book-guard';
 
 const TELEGRAM_BOT_TOKEN = '8751621772:AAHRSaBaX9TjEPrbpuRbhVl51x9DyX2_U2M';
-const TELEGRAM_CHAT_ID = '-1003743905862';
+const TELEGRAM_CHAT_ID = '-1003826664092';
 const POLL_INTERVAL_MS = 30000; // 30 seconds
 
 async function main() {

@@ -8,7 +8,7 @@ export interface RewardConfig {
 export interface MarketState {
   conditionId: string;
   eventId?: string;
-  marketSlug?: string;
+  slug?: string;
   question?: string;
   yesTokenId: string;
   noTokenId: string;

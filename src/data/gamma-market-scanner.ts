@@ -13,6 +13,7 @@ function mapGammaMarket(m: any): MarketState {
   }
   return {
     conditionId: m.conditionId || '',
+    slug: m.slug || '',
     question: m.question || '',
     yesTokenId: tokens[0] || '',
     noTokenId: tokens[1] || '',
