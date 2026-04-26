@@ -1,0 +1,27 @@
+[
+  {
+    "conditionId": "cond-eligible-1",
+    "yesTokenId": "yes1",
+    "noTokenId": "no1",
+    "active": true,
+    "closed": false,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "question": "Will it rain tomorrow?",
+    "volume24hUsd": 25000,
+    "liquidityUsd": 15000,
+    "oracleAmbiguityScore": 0.05
+  },
+  {
+    "conditionId": "cond-closed-1",
+    "yesTokenId": "yes2",
+    "noTokenId": "no2",
+    "active": false,
+    "closed": true,
+    "enableOrderBook": true,
+    "feesEnabled": true,
+    "volume24hUsd": 50000,
+    "liquidityUsd": 20000,
+    "oracleAmbiguityScore": 0.05
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "tokenId": "yes1",
+  "conditionId": "cond-eligible-1",
+  "bids": [
+    { "price": 0.45, "size": 100, "sizeUsd": 45 }
+  ],
+  "asks": [
+    { "price": 0.55, "size": 100, "sizeUsd": 55 }
+  ],
+  "bestBid": 0.45,
+  "bestAsk": 0.55,
+  "bestBidSizeUsd": 45,
+  "bestAskSizeUsd": 55,
+  "midpoint": 0.50,
+  "spread": 0.10,
+  "spreadTicks": 10,
+  "depth1Usd": 100,
+  "depth3Usd": 500,
+  "tickSize": 0.01,
+  "minOrderSize": 1,
+  "lastUpdateMs": 0
+}
