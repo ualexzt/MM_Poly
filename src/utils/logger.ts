@@ -19,7 +19,8 @@ export class ConsoleLogger implements Logger {
   }
 
   trace(trace: unknown): void {
-    console.log(JSON.stringify({ level: 'trace', time: Date.now(), ...trace }));
+    const obj = typeof trace === 'object' && trace !== null ? trace : {};
+    console.log(JSON.stringify({ level: 'trace', time: Date.now(), ...obj }));
   }
 }
 
