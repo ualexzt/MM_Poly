@@ -37,6 +37,15 @@ export class PaperExecutionEngine {
     this.filledSizes.delete(orderId);
   }
 
+  cancelByTokenId(tokenId: string): void {
+    for (const [id, order] of this.orders) {
+      if (order.tokenId === tokenId) {
+        this.orders.delete(id);
+        this.filledSizes.delete(id);
+      }
+    }
+  }
+
   onTrade(trade: TradeEvent): FillEvent[] {
     const fills: FillEvent[] = [];
     for (const [orderId, order] of this.orders) {

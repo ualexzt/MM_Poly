@@ -10,4 +10,4 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
-CMD ["node", "dist/run-shadow.js"]
+CMD ["node", "dist/run-paper.js"]
