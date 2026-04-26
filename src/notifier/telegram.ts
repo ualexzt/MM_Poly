@@ -45,7 +45,7 @@ export class TelegramNotifier {
   }): Promise<void> {
     const { question, side, price, size, fairPrice, spread, slug } = params;
     const emoji = side === 'BUY' ? '🟢' : '🔴';
-    const marketUrl = slug ? `https://polymarket.com/event/${slug}` : '';
+    const marketUrl = slug ? `https://polymarket.com/market/${slug}` : '';
     const text = `
 <b>${emoji} Quote Generated</b>
 
