@@ -115,8 +115,14 @@ async function main() {
     // Always simulate fills if a trade price came through WS
     // We do NOT cancel orders before fill check — they sit in the book like real orders
     if (tradePrice !== undefined) {
-      const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: 8 });
+      const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: 3 });
+      const openOrders = paperEngine.getOpenOrders();
       for (const fill of fills) {
+        const order = openOrders.find(o => o.id === fill.orderId);
+        // Skip unrealistic fills (price too far from our quote — means we weren't at the top of book)
+        if (order && Math.abs(fill.filledPrice - order.price) > 0.02) {
+          continue;
+        }
         pnlTracker.onFill(fill, yesFair.fairPrice);
         logger.info('Paper fill', {
           side: fill.side,
