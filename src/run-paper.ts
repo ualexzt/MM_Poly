@@ -17,7 +17,8 @@ import { isBookStale } from './risk/stale-book-guard';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
-const TELEGRAM_COOLDOWN_MS = 60000;
+const TELEGRAM_COOLDOWN_MS = 300000; // 5 min between Telegram alerts
+const QUOTE_COOLDOWN_MS = 10000;   // 10 sec between quote recalculation per market
 const WS_TOKEN_LIMIT = 10;
 
 async function main() {
@@ -39,7 +40,7 @@ async function main() {
   let eligible: MarketState[] = [];
   const books = new Map<string, BookState>();
   const lastAlert = new Map<string, number>();
-  const activeQuotes = new Map<string, { side: 'BUY' | 'SELL'; price: number; size: number; time: number }>();
+  const lastQuoteTime = new Map<string, number>(); // per conditionId
 
   try {
     markets = await scanner.fetchMarkets();
@@ -91,13 +92,7 @@ async function main() {
     });
     if (!yesFair) return;
 
-    const toxicityScore = 0.1;
-    const inventorySkew = getInventorySkew(market.yesTokenId);
-
-    // Cancel old orders for this token before placing new quotes
-    paperEngine.cancelByTokenId(market.yesTokenId);
-
-    // Simulate fills if trade price provided (realistic size)
+    // Always simulate fills if a trade price came through WS
     if (tradePrice !== undefined) {
       const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: 8 });
       for (const fill of fills) {
@@ -105,6 +100,18 @@ async function main() {
         logger.info('Paper fill', { side: fill.side, price: fill.filledPrice, size: fill.filledSize, pnl: pnlTracker.getPosition(fill.tokenId)?.realizedPnl });
       }
     }
+
+    // Quote cooldown: skip recalculation if < 10s since last quote for this market
+    const now = Date.now();
+    const lastQuote = lastQuoteTime.get(market.conditionId) || 0;
+    if (now - lastQuote < QUOTE_COOLDOWN_MS) return;
+    lastQuoteTime.set(market.conditionId, now);
+
+    const toxicityScore = 0.1;
+    const inventorySkew = getInventorySkew(market.yesTokenId);
+
+    // Cancel old orders for this token before placing new quotes
+    paperEngine.cancelByTokenId(market.yesTokenId);
 
     for (const side of ['BUY', 'SELL'] as const) {
       const quotes = generateQuoteCandidates({
