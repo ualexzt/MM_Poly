@@ -17,9 +17,19 @@ import { isBookStale } from './risk/stale-book-guard';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
-const TELEGRAM_COOLDOWN_MS = 300000; // 5 min between Telegram alerts
 const QUOTE_COOLDOWN_MS = 10000;   // 10 sec between quote recalculation per market
+const ORDER_TTL_MS = 60000;        // 60 sec max lifetime for an order before replace
+const PRICE_EPSILON = 0.005;       // half tick — treat as same price
 const WS_TOKEN_LIMIT = 10;
+// Kyiv time reports: 08:00 and 20:00 Kyiv = 05:00 and 17:00 UTC
+const REPORT_HOURS_UTC = [5, 17];
+
+interface ActiveOrder {
+  orderId: string;
+  price: number;
+  size: number;
+  submittedAt: number;
+}
 
 async function main() {
   const logger = new ConsoleLogger();
@@ -34,13 +44,15 @@ async function main() {
   logger.info(`Mode: ${env.mode}`);
   logger.info('Data source: WebSocket live stream');
 
-  await telegram.sendMessage(`🚀 <b>Bot started</b>\nMode: <b>PAPER TRADING</b>\nTracking PnL & sending daily reports at ${env.dailyReportHour.toString().padStart(2, '0')}:${env.dailyReportMinute.toString().padStart(2, '0')} UTC`);
+  await telegram.sendMessage(
+    `🚀 <b>Bot started</b>\nMode: <b>PAPER TRADING</b>\nReports: 08:00 & 20:00 Kyiv time`
+  );
 
   let markets: MarketState[] = [];
   let eligible: MarketState[] = [];
   const books = new Map<string, BookState>();
-  const lastAlert = new Map<string, number>();
   const lastQuoteTime = new Map<string, number>(); // per conditionId
+  const activeOrders = new Map<string, { buy: ActiveOrder | null; sell: ActiveOrder | null }>();
 
   try {
     markets = await scanner.fetchMarkets();
@@ -72,9 +84,17 @@ async function main() {
   function getInventorySkew(tokenId: string): number {
     const pos = pnlTracker.getPosition(tokenId);
     if (!pos || pos.netSize === 0) return 0;
-    const maxPos = env.maxExposureUsd / 100; // rough token count
+    const maxPos = env.maxExposureUsd / 100;
     const skew = Math.tanh(pos.netSize / maxPos) * defaultConfig.spread.baseHalfSpreadCents;
     return skew;
+  }
+
+  function shouldReplace(current: ActiveOrder | null, newPrice: number, newSize: number, now: number): boolean {
+    if (!current) return true;
+    if (now - current.submittedAt > ORDER_TTL_MS) return true;
+    if (Math.abs(current.price - newPrice) > PRICE_EPSILON) return true;
+    if (Math.abs(current.size - newSize) > 0.01) return true;
+    return false;
   }
 
   function evaluateMarket(market: MarketState, tradePrice?: number) {
@@ -93,11 +113,18 @@ async function main() {
     if (!yesFair) return;
 
     // Always simulate fills if a trade price came through WS
+    // We do NOT cancel orders before fill check — they sit in the book like real orders
     if (tradePrice !== undefined) {
       const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: 8 });
       for (const fill of fills) {
         pnlTracker.onFill(fill, yesFair.fairPrice);
-        logger.info('Paper fill', { side: fill.side, price: fill.filledPrice, size: fill.filledSize, pnl: pnlTracker.getPosition(fill.tokenId)?.realizedPnl });
+        logger.info('Paper fill', {
+          side: fill.side,
+          price: fill.filledPrice,
+          size: fill.filledSize,
+          remaining: fill.remainingSize,
+          pnl: pnlTracker.getPosition(fill.tokenId)?.realizedPnl?.toFixed(2)
+        });
       }
     }
 
@@ -110,10 +137,14 @@ async function main() {
     const toxicityScore = 0.1;
     const inventorySkew = getInventorySkew(market.yesTokenId);
 
-    // Cancel old orders for this token before placing new quotes
-    paperEngine.cancelByTokenId(market.yesTokenId);
+    let ao = activeOrders.get(market.conditionId);
+    if (!ao) {
+      ao = { buy: null, sell: null };
+      activeOrders.set(market.conditionId, ao);
+    }
 
     for (const side of ['BUY', 'SELL'] as const) {
+      const aoKey = side === 'BUY' ? 'buy' : 'sell';
       const quotes = generateQuoteCandidates({
         conditionId: market.conditionId,
         tokenId: market.yesTokenId,
@@ -130,6 +161,31 @@ async function main() {
       });
 
       for (const quote of quotes) {
+        const current = ao[aoKey];
+
+        // Only replace if price/size changed meaningfully or order is too old
+        if (!shouldReplace(current, quote.price, quote.size, now)) {
+          continue;
+        }
+
+        // Cancel old order if exists
+        if (current) {
+          paperEngine.cancel(current.orderId);
+        }
+
+        const orderId = `${market.conditionId}-${side}-${now}`;
+        paperEngine.submit({
+          id: orderId,
+          tokenId: market.yesTokenId,
+          side,
+          price: quote.price,
+          size: quote.size,
+          sizeUsd: quote.sizeUsd,
+          postOnly: true
+        });
+
+        ao[aoKey] = { orderId, price: quote.price, size: quote.size, submittedAt: now };
+
         const trace = createTrace({
           mode: 'paper',
           conditionId: market.conditionId,
@@ -153,33 +209,6 @@ async function main() {
         });
 
         logger.trace(trace);
-
-        // Submit to paper engine
-        paperEngine.submit({
-          id: `${market.conditionId}-${side}-${Date.now()}`,
-          tokenId: market.yesTokenId,
-          side,
-          price: quote.price,
-          size: quote.size,
-          sizeUsd: quote.sizeUsd,
-          postOnly: true
-        });
-
-        // Telegram cooldown
-        const alertKey = `${market.conditionId}-${side}`;
-        const last = lastAlert.get(alertKey) || 0;
-        if (Date.now() - last > TELEGRAM_COOLDOWN_MS) {
-          lastAlert.set(alertKey, Date.now());
-          telegram.sendTradeAlert({
-            question: market.question || market.conditionId,
-            side,
-            price: quote.price,
-            size: quote.size,
-            fairPrice: yesFair.fairPrice,
-            spread: yesBook.spread || 0,
-            slug: market.slug
-          }).catch(() => {});
-        }
       }
     }
   }
@@ -197,7 +226,6 @@ async function main() {
         books.set(update.tokenId, update.book);
         const market = eligible.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
         if (market) {
-          // If price_changes included a trade price, pass it for fill simulation
           const tradePrice = update.lastTradePrice ?? undefined;
           evaluateMarket(market, tradePrice);
         }
@@ -208,15 +236,15 @@ async function main() {
 
   ws.connect(tokenIds.slice(0, WS_TOKEN_LIMIT));
 
-  // Daily PnL report scheduler
-  function scheduleNextReport() {
+  // Report scheduler — 08:00 and 20:00 Kyiv (05:00 & 17:00 UTC)
+  function scheduleReport(hourUtc: number) {
     const now = new Date();
-    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), env.dailyReportHour, env.dailyReportMinute));
+    const next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc, 0));
     if (next.getTime() <= now.getTime()) {
       next.setUTCDate(next.getUTCDate() + 1);
     }
     const delay = next.getTime() - now.getTime();
-    logger.info(`Next daily report scheduled at ${next.toISOString()}`);
+    logger.info(`Next report scheduled at ${next.toISOString()}`);
 
     setTimeout(async () => {
       const fairPrices = new Map<string, number>();
@@ -224,11 +252,13 @@ async function main() {
         if (book.midpoint !== null) fairPrices.set(tokenId, book.midpoint);
       }
       const dateStr = new Date().toISOString().slice(0, 10);
-      pnlTracker.startNewDay(dateStr);
+      // Daily snapshot uses current accumulated realized vs start-of-day
       const report = pnlTracker.endDay(dateStr, fairPrices);
+      // Start new day tracking
+      pnlTracker.startNewDay(dateStr);
 
       const text = `
-📊 <b>Daily Paper Trading Report — ${report.date}</b>
+📊 <b>Paper Trading Report — ${report.date}</b>
 
 <b>Realized PnL:</b> $${report.realizedPnl.toFixed(2)}
 <b>Unrealized PnL:</b> $${report.unrealizedPnl.toFixed(2)}
@@ -241,11 +271,13 @@ async function main() {
       `.trim();
 
       await telegram.sendMessage(text);
-      scheduleNextReport();
+      scheduleReport(hourUtc);
     }, delay);
   }
 
-  scheduleNextReport();
+  for (const hour of REPORT_HOURS_UTC) {
+    scheduleReport(hour);
+  }
 
   logger.info('Paper trading active. Press Ctrl+C to stop.');
 }
