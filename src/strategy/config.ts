@@ -23,13 +23,13 @@ export const defaultConfig: StrategyConfig = {
     rewardTighteningMaxCents: 0.5
   },
   size: {
-    baseOrderSizeUsd: 10, maxOrderSizeUsd: 25,
+    baseOrderSizeUsd: 1, maxOrderSizeUsd: 2.5,
     minSizeMultiplierOverExchangeMin: 1.2,
     respectRewardMinIncentiveSize: true
   },
   inventory: {
-    maxMarketExposureUsd: 100, maxEventExposureUsd: 250,
-    maxTotalStrategyExposureUsd: 1000,
+    maxMarketExposureUsd: 10, maxEventExposureUsd: 25,
+    maxTotalStrategyExposureUsd: 100,
     softLimitPct: 35, hardLimitPct: 65,
     maxSkewCents: 3.0, skewSensitivity: 0.35
   },

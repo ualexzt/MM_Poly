@@ -151,9 +151,6 @@ function shouldImproveByOneTick(
 
   // Never improve conditions (§10.5)
   if (spreadTicks <= 2) return false;
-  if (book.lastTradePrice !== null && book.lastTradePrice !== undefined) {
-    // Approximation: if we have a recent last trade it might indicate activity
-  }
   if (inventoryPct > 35) return false;
 
   // Conditions for improving by one tick (§10.5)

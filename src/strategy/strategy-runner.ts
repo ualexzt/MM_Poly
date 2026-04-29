@@ -6,7 +6,7 @@ import { MarketScanner } from '../data/gamma-market-scanner';
 import { OrderbookClient } from '../data/clob-orderbook-client';
 import { PaperExecutionEngine } from '../simulation/paper-execution-engine';
 import { Logger } from '../utils/logger';
-import { filterEligibleMarkets, getExclusionReason } from './market-selector';
+import { filterEligibleMarkets } from './market-selector';
 import { computeFairPrice, checkComplementConsistency } from '../engines/fair-price-engine';
 import { computeToxicityScore, getToxicityAction, checkHardToxicityCancel } from '../engines/toxicity-engine';
 import { computeInventorySkew, checkSellInventoryAvailable } from '../engines/inventory-engine';
@@ -64,6 +64,8 @@ export class StrategyRunner {
   private flows: Map<string, FlowState> = new Map();
   // Tick size history for change detection
   private tickSizes: Map<string, TickSizeRecord> = new Map();
+  // Cached WS disconnect seconds for toxicity engine
+  private wsDisconnectedSeconds = 0;
 
   constructor(private deps: StrategyRunnerDeps) {
     const { config, paperEngine } = deps;
@@ -101,6 +103,9 @@ export class StrategyRunner {
 
     // §13.2 — Global kill switch check
     const wsStatusFinal = wsStatus ?? { connected: true, disconnectedAt: null };
+    this.wsDisconnectedSeconds = wsStatusFinal.connected
+      ? 0
+      : (wsStatusFinal.disconnectedAt != null ? (Date.now() - wsStatusFinal.disconnectedAt) / 1000 : 0);
     const ks = this.killSwitch.check(
       wsStatusFinal,
       { errorsLast60s: 0, totalLast60s: 100 },
@@ -201,7 +206,6 @@ export class StrategyRunner {
     const toxicityAction = getToxicityAction(toxicityScore);
 
     // §8.4 — Hard toxicity cancels
-    const wsDisconnectedSecs = 0; // real WS status tracked by kill switch
     const bookStaleMs = Date.now() - yesBook.lastUpdateMs;
     const hardCancel = checkHardToxicityCancel(
       {
@@ -211,7 +215,7 @@ export class StrategyRunner {
         bookHashChanges10s: flow?.bookHashChanges10s ?? 0,
         spreadTicks: yesBook.spreadTicks ?? 99,
         bookStaleMs,
-        wsDisconnectedSeconds: wsDisconnectedSecs,
+        wsDisconnectedSeconds: this.wsDisconnectedSeconds,
       },
       config.toxicity
     );
