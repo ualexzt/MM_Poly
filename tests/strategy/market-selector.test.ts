@@ -8,6 +8,7 @@ function makeMarket(overrides: Partial<MarketState> = {}): MarketState {
     active: true, closed: false, enableOrderBook: true, feesEnabled: true,
     volume24hUsd: 20000, liquidityUsd: 10000,
     oracleAmbiguityScore: 0.10,
+    resolutionSource: 'https://foo.com',
     ...overrides
   };
 }

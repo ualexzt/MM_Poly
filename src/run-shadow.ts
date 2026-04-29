@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import { env } from './config/env';
 import { WsMarketStream } from './data/ws-market-stream';
 import { GammaApiScanner } from './data/gamma-market-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
@@ -13,13 +15,11 @@ import { isBookStale } from './risk/stale-book-guard';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
-const TELEGRAM_BOT_TOKEN = '8751621772:AAHRSaBaX9TjEPrbpuRbhVl51x9DyX2_U2M';
-const TELEGRAM_CHAT_ID = '-1003826664092';
 const TELEGRAM_COOLDOWN_MS = 60000; // 1 min between alerts for same market
 
 async function main() {
   const logger = new ConsoleLogger();
-  const telegram = new TelegramNotifier({ botToken: TELEGRAM_BOT_TOKEN, chatId: TELEGRAM_CHAT_ID });
+  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
   const scanner = new GammaApiScanner();
   const bookClient = new ClobApiClient();
   const killSwitch = new KillSwitch(defaultConfig.risk);

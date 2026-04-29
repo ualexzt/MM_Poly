@@ -8,6 +8,7 @@
     "enableOrderBook": true,
     "feesEnabled": true,
     "question": "Will it rain tomorrow?",
+    "resolutionSource": "https://weather.com",
     "volume24hUsd": 25000,
     "liquidityUsd": 15000,
     "oracleAmbiguityScore": 0.05
@@ -20,6 +21,7 @@
     "closed": true,
     "enableOrderBook": true,
     "feesEnabled": true,
+    "resolutionSource": "https://weather.com",
     "volume24hUsd": 50000,
     "liquidityUsd": 20000,
     "oracleAmbiguityScore": 0.05

@@ -42,8 +42,9 @@ export class TelegramNotifier {
     fairPrice: number;
     spread: number;
     slug?: string;
+    mode?: string;
   }): Promise<void> {
-    const { question, side, price, size, fairPrice, spread, slug } = params;
+    const { question, side, price, size, fairPrice, spread, slug, mode = 'paper' } = params;
     const emoji = side === 'BUY' ? '🟢' : '🔴';
     const marketUrl = slug ? `https://polymarket.com/market/${slug}` : '';
     const text = `
@@ -57,9 +58,10 @@ export class TelegramNotifier {
 <b>Fair:</b> ${fairPrice.toFixed(4)}
 <b>Spread:</b> ${(spread * 100).toFixed(2)}¢
 
-<i>Mode: shadow (not placing real orders)</i>
+<i>Mode: ${mode}</i>
     `.trim();
 
     await this.sendMessage(text);
   }
 }
+

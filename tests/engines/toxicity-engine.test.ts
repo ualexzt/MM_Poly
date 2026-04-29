@@ -68,4 +68,11 @@ describe('toxicity-engine', () => {
       { cancelIfMidpointMoves10sCentsGte: 1.5, cancelIfMidpointMoves60sCentsGte: 3.0, cancelIfLargeTradeUsdGte: 1000, cancelIfHashChanges10sGte: 8, cancelIfSpreadTicksLte: 1, cooldownAfterCancelSeconds: 20 }
     )).toBe(true);
   });
+
+  test('book hash instability triggers hard cancel', () => {
+    expect(checkHardToxicityCancel(
+      { midpointMove10sCents: 0, midpointMove60sCents: 0, largeTradeUsd: 0, bookHashChanges10s: 10, spreadTicks: 5, bookStaleMs: 500, wsDisconnectedSeconds: 0 },
+      { cancelIfMidpointMoves10sCentsGte: 1.5, cancelIfMidpointMoves60sCentsGte: 3.0, cancelIfLargeTradeUsdGte: 1000, cancelIfHashChanges10sGte: 8, cancelIfSpreadTicksLte: 1, cooldownAfterCancelSeconds: 20 }
+    )).toBe(true);
+  });
 });

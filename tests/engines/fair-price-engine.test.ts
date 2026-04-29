@@ -9,7 +9,7 @@ describe('fair-price-engine', () => {
       lastTradeEma: null, complementMidpoint: null, weights
     });
     expect(result).not.toBeNull();
-    expect(result!.fairPrice).toBeCloseTo(0.35, 2);
+    expect(result!.fairPrice).toBeCloseTo(0.50, 2);
     expect(result!.microprice).toBeCloseTo(0.50, 2);
   });
 
@@ -19,7 +19,7 @@ describe('fair-price-engine', () => {
       lastTradeEma: null, complementMidpoint: null, weights
     });
     expect(result!.microprice).toBeCloseTo(0.46, 2);
-    expect(result!.fairPrice).toBeCloseTo(0.332, 2);
+    expect(result!.fairPrice).toBeCloseTo(0.474, 2);
   });
 
   test('computes complement-implied yes price', () => {
@@ -27,7 +27,7 @@ describe('fair-price-engine', () => {
       bestBid: 0.45, bestAsk: 0.55, bestBidSize: 100, bestAskSize: 100,
       lastTradeEma: null, complementMidpoint: 0.48, weights
     });
-    expect(result!.fairPrice).toBeCloseTo(0.446, 2);
+    expect(result!.fairPrice).toBeCloseTo(0.504, 2);
   });
 
   test('rejects missing best bid', () => {

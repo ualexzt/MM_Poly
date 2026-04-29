@@ -30,7 +30,7 @@ export const defaultConfig: StrategyConfig = {
   inventory: {
     maxMarketExposureUsd: 100, maxEventExposureUsd: 250,
     maxTotalStrategyExposureUsd: 1000,
-    softLimitPct: 0.35, hardLimitPct: 0.65,
+    softLimitPct: 35, hardLimitPct: 65,
     maxSkewCents: 3.0, skewSensitivity: 0.35
   },
   toxicity: {

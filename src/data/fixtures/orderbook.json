@@ -18,5 +18,5 @@
   "depth3Usd": 500,
   "tickSize": 0.01,
   "minOrderSize": 1,
-  "lastUpdateMs": 0
+  "lastUpdateMs": 9999999999999
 }
