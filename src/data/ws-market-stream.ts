@@ -16,6 +16,7 @@ export class WsMarketStream {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private tokenIds: string[] = [];
   private isConnected = false;
+  private pingTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private url: string = 'wss://ws-subscriptions-clob.polymarket.com/ws/market',
@@ -31,11 +32,15 @@ export class WsMarketStream {
       this.isConnected = true;
       console.log('[WS] Market stream connected');
       this.subscribe(tokenIds);
+      this.startPing();
     });
 
     this.ws.on('message', (data: Buffer) => {
+      const dataStr = data.toString();
+      if (dataStr === 'PONG') return;
+
       try {
-        const msg = JSON.parse(data.toString());
+        const msg = JSON.parse(dataStr);
         this.handleMessage(msg);
       } catch {
         // Ignore non-JSON messages (e.g., server errors)
@@ -49,9 +54,26 @@ export class WsMarketStream {
 
     this.ws.on('close', () => {
       this.isConnected = false;
+      this.stopPing();
       console.log('[WS] Disconnected, reconnecting in 5s...');
       this.reconnectTimer = setTimeout(() => this.connect(this.tokenIds), 5000);
     });
+  }
+
+  private startPing(): void {
+    this.stopPing();
+    this.pingTimer = setInterval(() => {
+      if (this.ws && this.isConnected) {
+        this.ws.send('PING');
+      }
+    }, 20000); // 20s interval
+  }
+
+  private stopPing(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   private subscribe(tokenIds: string[]): void {

@@ -21,6 +21,8 @@ function mapGammaMarket(m: any): MarketState {
     closed: m.closed === true,
     enableOrderBook: tokens.length >= 2,
     feesEnabled: true,
+    endDate: m.endDate || '',
+    resolutionSource: m.resolutionSource || '',
     volume24hUsd: m.volume24hr || 0,
     liquidityUsd: m.liquidityClob || 0,
     oracleAmbiguityScore: 0.05,

@@ -14,7 +14,7 @@ export const defaultConfig: StrategyConfig = {
     minBestLevelDepthUsd: 100, minDepth3LevelsUsd: 500,
     minSpreadTicks: 3, maxSpreadCents: 8,
     minTimeToResolutionMinutes: 90, disableNearResolutionMinutes: 30,
-    maxOracleAmbiguityScore: 0.20, requireValidResolutionSource: true
+    maxOracleAmbiguityScore: 0.20, requireValidResolutionSource: false
   },
   spread: {
     minHalfSpreadTicks: 1, baseHalfSpreadCents: 1.0,

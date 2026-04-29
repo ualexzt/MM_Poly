@@ -40,6 +40,25 @@ async function main() {
   const pnlTracker = new PaperPnlTracker();
   const killSwitch = new KillSwitch(defaultConfig.risk);
 
+  // Apply env overrides
+  const config = {
+    ...defaultConfig,
+    marketFilter: {
+      ...defaultConfig.marketFilter,
+      minLiquidityUsd: env.minLiquidityUsd,
+      minVolume24hUsd: env.minVolume24hUsd,
+      maxSpreadCents: env.maxSpreadCents,
+    },
+    inventory: {
+      ...defaultConfig.inventory,
+      maxTotalStrategyExposureUsd: env.maxExposureUsd,
+    },
+    risk: {
+      ...defaultConfig.risk,
+      maxDailyDrawdownPct: env.maxDrawdownPct * 100, // convert to pct
+    }
+  };
+
   logger.info('=== Polymarket MM Strategy — Paper Trading ===');
   logger.info(`Mode: ${env.mode}`);
   logger.info('Data source: WebSocket live stream');
@@ -56,7 +75,7 @@ async function main() {
 
   try {
     markets = await scanner.fetchMarkets();
-    eligible = filterEligibleMarkets(markets, defaultConfig.marketFilter);
+    eligible = filterEligibleMarkets(markets, config.marketFilter);
     logger.info(`Loaded ${markets.length} markets, ${eligible.length} eligible`);
   } catch (err) {
     logger.error('Failed to load markets', { error: String(err) });
@@ -85,7 +104,7 @@ async function main() {
     const pos = pnlTracker.getPosition(tokenId);
     if (!pos || pos.netSize === 0) return 0;
     const maxPos = env.maxExposureUsd / 100;
-    const skew = Math.tanh(pos.netSize / maxPos) * defaultConfig.spread.baseHalfSpreadCents;
+    const skew = Math.tanh(pos.netSize / maxPos) * config.spread.baseHalfSpreadCents;
     return skew;
   }
 
@@ -101,14 +120,14 @@ async function main() {
     const yesBook = books.get(market.yesTokenId);
     const noBook = books.get(market.noTokenId);
     if (!yesBook || !noBook) return;
-    if (isBookStale(yesBook.lastUpdateMs, defaultConfig.staleOrderMaxAgeMs)) return;
+    if (isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs)) return;
 
     const yesFair = computeFairPrice({
       bestBid: yesBook.bestBid || 0, bestAsk: yesBook.bestAsk || 0,
       bestBidSize: yesBook.bestBidSizeUsd, bestAskSize: yesBook.bestAskSizeUsd,
       lastTradeEma: yesBook.lastTradePrice || null,
       complementMidpoint: noBook.midpoint,
-      weights: defaultConfig.fairPrice.weights
+      weights: config.fairPrice.weights
     });
     if (!yesFair) return;
 
@@ -156,12 +175,12 @@ async function main() {
         tokenId: market.yesTokenId,
         side,
         fairPrice: yesFair.fairPrice,
-        targetHalfSpreadCents: defaultConfig.spread.baseHalfSpreadCents,
+        targetHalfSpreadCents: config.spread.baseHalfSpreadCents,
         inventorySkewCents: inventorySkew,
         toxicityScore,
         book: yesBook,
-        baseSizeUsd: defaultConfig.size.baseOrderSizeUsd,
-        maxSizeUsd: defaultConfig.size.maxOrderSizeUsd,
+        baseSizeUsd: config.size.baseOrderSizeUsd,
+        maxSizeUsd: config.size.maxOrderSizeUsd,
         minOrderSize: yesBook.minOrderSize,
         isBookStale: false
       });
