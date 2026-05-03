@@ -10,7 +10,7 @@ import { ConsoleLogger } from './utils/logger';
 import { TelegramNotifier } from './notifier/telegram';
 import { computeFairPrice } from './engines/fair-price-engine';
 import { filterEligibleMarkets } from './strategy/market-selector';
-import { generateQuoteCandidates } from './engines/quote-engine';
+import { generateQuoteCandidate } from './engines/quote-engine';
 import { createTrace } from './accounting/decision-trace';
 import { KillSwitch } from './risk/kill-switch';
 import { isBookStale } from './risk/stale-book-guard';
@@ -104,7 +104,7 @@ async function main() {
     const pos = pnlTracker.getPosition(tokenId);
     if (!pos || pos.netSize === 0) return 0;
     const maxPos = env.maxExposureUsd / 100;
-    const skew = Math.tanh(pos.netSize / maxPos) * config.spread.baseHalfSpreadCents;
+    const skew = Math.tanh(pos.netSize / maxPos) * config.inventory.maxSkewCents;
     return skew;
   }
 
@@ -170,20 +170,25 @@ async function main() {
 
     for (const side of ['BUY', 'SELL'] as const) {
       const aoKey = side === 'BUY' ? 'buy' : 'sell';
-      const quotes = generateQuoteCandidates({
+      const pos = pnlTracker.getPosition(market.yesTokenId);
+      const maxPos = env.maxExposureUsd / 100;
+      const inventoryPct = Math.min(100, (Math.abs(pos?.netSize || 0) / maxPos) * 100);
+
+      const quoteResult = generateQuoteCandidate({
         conditionId: market.conditionId,
         tokenId: market.yesTokenId,
         side,
         fairPrice: yesFair.fairPrice,
-        targetHalfSpreadCents: config.spread.baseHalfSpreadCents,
-        inventorySkewCents: inventorySkew,
-        toxicityScore,
         book: yesBook,
-        baseSizeUsd: config.size.baseOrderSizeUsd,
-        maxSizeUsd: config.size.maxOrderSizeUsd,
-        minOrderSize: yesBook.minOrderSize,
+        spread: config.spread,
+        size: config.size,
+        toxicityScore,
+        inventoryPct,
+        inventorySkewCents: inventorySkew,
         isBookStale: false
       });
+
+      const quotes = quoteResult ? [quoteResult.candidate] : [];
 
       for (const quote of quotes) {
         const current = ao[aoKey];
@@ -224,7 +229,7 @@ async function main() {
           complementFair: noBook.midpoint,
           lastTradeEma: yesBook.lastTradePrice || null,
           toxicityScore,
-          inventoryPct: Math.abs(inventorySkew) / defaultConfig.spread.baseHalfSpreadCents,
+          inventoryPct,
           inventorySkewCents: inventorySkew,
           targetPrice: quote.price,
           targetSizeUsd: quote.sizeUsd,
