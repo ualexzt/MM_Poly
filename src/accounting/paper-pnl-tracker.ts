@@ -94,6 +94,14 @@ export class PaperPnlTracker {
     return Array.from(this.positions.values());
   }
 
+  getCumulativeRealizedPnl(): number {
+    return this.getAllPositions().reduce((sum, pos) => sum + pos.realizedPnl, 0);
+  }
+
+  getOpenPositionCount(): number {
+    return this.getAllPositions().filter(pos => pos.netSize !== 0).length;
+  }
+
   computeUnrealizedPnl(fairPrices: Map<string, number>): number {
     let total = 0;
     for (const [tokenId, pos] of this.positions) {
