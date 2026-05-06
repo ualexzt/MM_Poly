@@ -32,6 +32,8 @@ export function formatTelegramRiskReport(input: TelegramRiskReportInput): string
   const top = input.risk.topMarketDecision;
   const marketTitle = getMarketTitle(input, top);
   const position = formatPosition(top);
+  const openPositions = top && top.netPosition !== 0 ? 1 : 0;
+  const bidAsk = formatBidAsk(top);
   const quoteShare = formatQuoteShare(input.activity.primaryMarketQuoteTraces, input.activity.quoteTraces);
   const worstCase = formatWorstCase(top);
 
@@ -59,12 +61,15 @@ Fills: ${input.activity.fillsTotal}
 BUY: ${input.activity.buyFills} fills / ${formatContracts(input.activity.buyContracts)} contracts / ${formatUsd(input.activity.buyNotional)}
 SELL: ${input.activity.sellFills} fills / ${formatContracts(input.activity.sellContracts)} contracts / ${formatUsd(input.activity.sellNotional)}
 Volume: ${formatContracts(input.activity.totalContracts)} contracts / ${formatUsd(input.activity.notionalVolume)}
+Active Markets: ${input.activity.activeMarkets}
+Open Positions: ${openPositions}
 Quotes: ${formatInteger(input.activity.quoteTraces)} generated: ${formatInteger(input.activity.quoteGeneratedCount)} rejected: ${formatInteger(input.activity.quoteRejectedCount)}
 
 📦 <b>Inventory</b>
 Position: ${position}
 Avg Entry: ${formatNullablePrice(top?.avgEntryPrice ?? null)}
 Fair: ${formatNullablePrice(top?.currentFair ?? null)}
+Bid/Ask: ${bidAsk}
 Inventory Usage: ${formatNullablePct(top?.inventoryUsagePct ?? null)}
 Reduce-only: ${input.risk.reduceOnlyActive ? 'ON' : 'OFF'}
 
@@ -149,6 +154,12 @@ function formatPosition(top: MarketRiskDecision | null): string {
 
 function formatNullablePrice(value: number | null): string {
   return value === null ? 'n/a' : value.toFixed(4);
+}
+
+function formatBidAsk(top: MarketRiskDecision | null): string {
+  const bid = formatNullablePrice(top?.currentBid ?? null);
+  const ask = formatNullablePrice(top?.currentAsk ?? null);
+  return `${bid} / ${ask}`;
 }
 
 function formatNullablePct(value: number | null): string {

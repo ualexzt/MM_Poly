@@ -88,7 +88,10 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Fills: 145');
     expect(text).toContain('BUY: 31 fills / 61 contracts / $32.75');
     expect(text).toContain('SELL: 114 fills / 228 contracts / $141.34');
+    expect(text).toContain('Active Markets: 3');
+    expect(text).toContain('Open Positions: 1');
     expect(text).toContain('Position: SHORT 167');
+    expect(text).toContain('Bid/Ask: 0.5500 / 0.5600');
     expect(text).toContain('Worst Case to YES=1.00: -$63.31');
     expect(text).toContain('Quote Share: 7,930 / 7,934');
     expect(text).not.toContain('Total Trades');
@@ -108,6 +111,7 @@ describe('formatTelegramRiskReport', () => {
     }));
 
     expect(text).toContain('Status: OK');
+    expect(text).toContain('Open Positions: 0');
     expect(text).toContain('Position: FLAT');
     expect(text).toContain('Main Market');
   });
