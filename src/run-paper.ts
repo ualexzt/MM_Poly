@@ -166,6 +166,30 @@ async function main() {
     const noBook = books.get(market.noTokenId);
     if (!yesBook || !noBook) return;
 
+    const ao = getActiveOrders(market.conditionId);
+    const bookStale = isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs);
+    const hasActiveQuotesBeforeFair = Boolean(ao.buy || ao.sell);
+
+    if (bookStale) {
+      const staleRiskDecision = riskManager.evaluateMarket({
+        mode: env.mode,
+        conditionId: market.conditionId,
+        tokenId: market.yesTokenId,
+        position: pnlTracker.getPosition(market.yesTokenId),
+        book: yesBook,
+        currentFair: null,
+        primaryMarketQuoteSharePct: activityTracker.snapshot().primaryMarketQuoteSharePct,
+        hasActiveQuotes: hasActiveQuotesBeforeFair,
+        isBookStale: true,
+        killSwitchActive: false,
+      });
+      latestRiskDecisions.set(market.conditionId, staleRiskDecision);
+      if (hasActiveQuotesBeforeFair) {
+        cancelMarketOrders(market.conditionId);
+      }
+      return;
+    }
+
     const yesFair = computeFairPrice({
       bestBid: yesBook.bestBid || 0, bestAsk: yesBook.bestAsk || 0,
       bestBidSize: yesBook.bestBidSizeUsd, bestAskSize: yesBook.bestAskSizeUsd,
@@ -174,9 +198,6 @@ async function main() {
       weights: config.fairPrice.weights
     });
     if (!yesFair) return;
-
-    const ao = getActiveOrders(market.conditionId);
-    const bookStale = isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs);
 
     // Always simulate fills if a trade price came through WS
     // We do NOT cancel orders before fill check — they sit in the book like real orders
@@ -213,17 +234,10 @@ async function main() {
       currentFair: yesFair.fairPrice,
       primaryMarketQuoteSharePct: activitySnapshot.primaryMarketQuoteSharePct,
       hasActiveQuotes,
-      isBookStale: bookStale,
+      isBookStale: false,
       killSwitchActive: false,
     });
     latestRiskDecisions.set(market.conditionId, riskDecision);
-
-    if (bookStale) {
-      if (hasActiveQuotes) {
-        cancelMarketOrders(market.conditionId);
-      }
-      return;
-    }
 
     // Quote cooldown: skip recalculation if < 10s since last quote for this market
     const now = Date.now();
