@@ -13,7 +13,6 @@ import { computeFairPrice } from './engines/fair-price-engine';
 import { filterEligibleMarkets } from './strategy/market-selector';
 import { generateQuoteCandidate } from './engines/quote-engine';
 import { createTrace } from './accounting/decision-trace';
-import { KillSwitch } from './risk/kill-switch';
 import { isBookStale } from './risk/stale-book-guard';
 import { MarketRiskDecision, maxRiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
 import { formatTelegramRiskReport } from './reporting/telegram-risk-report';
@@ -34,6 +33,11 @@ interface ActiveOrder {
   submittedAt: number;
 }
 
+interface MarketActiveOrders {
+  buy: ActiveOrder | null;
+  sell: ActiveOrder | null;
+}
+
 async function main() {
   const logger = new ConsoleLogger();
   const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
@@ -41,7 +45,6 @@ async function main() {
   const bookClient = new ClobApiClient();
   const paperEngine = new PaperExecutionEngine();
   const pnlTracker = new PaperPnlTracker();
-  const killSwitch = new KillSwitch(defaultConfig.risk);
   const startedAt = new Date();
   let warningsCount = 0;
   let errorsCount = 0;
@@ -88,7 +91,30 @@ async function main() {
   let eligible: MarketState[] = [];
   const books = new Map<string, BookState>();
   const lastQuoteTime = new Map<string, number>(); // per conditionId
-  const activeOrders = new Map<string, { buy: ActiveOrder | null; sell: ActiveOrder | null }>();
+  const activeOrders = new Map<string, MarketActiveOrders>();
+
+  function getActiveOrders(conditionId: string): MarketActiveOrders {
+    let orders = activeOrders.get(conditionId);
+    if (!orders) {
+      orders = { buy: null, sell: null };
+      activeOrders.set(conditionId, orders);
+    }
+    return orders;
+  }
+
+  function cancelSideOrder(orders: MarketActiveOrders, side: 'BUY' | 'SELL'): void {
+    const key = side === 'BUY' ? 'buy' : 'sell';
+    const activeOrder = orders[key];
+    if (!activeOrder) return;
+    paperEngine.cancel(activeOrder.orderId);
+    orders[key] = null;
+  }
+
+  function cancelMarketOrders(conditionId: string): void {
+    const orders = getActiveOrders(conditionId);
+    cancelSideOrder(orders, 'BUY');
+    cancelSideOrder(orders, 'SELL');
+  }
 
   try {
     markets = await scanner.fetchMarkets();
@@ -139,7 +165,6 @@ async function main() {
     const yesBook = books.get(market.yesTokenId);
     const noBook = books.get(market.noTokenId);
     if (!yesBook || !noBook) return;
-    if (isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs)) return;
 
     const yesFair = computeFairPrice({
       bestBid: yesBook.bestBid || 0, bestAsk: yesBook.bestAsk || 0,
@@ -149,6 +174,9 @@ async function main() {
       weights: config.fairPrice.weights
     });
     if (!yesFair) return;
+
+    const ao = getActiveOrders(market.conditionId);
+    const bookStale = isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs);
 
     // Always simulate fills if a trade price came through WS
     // We do NOT cancel orders before fill check — they sit in the book like real orders
@@ -173,16 +201,9 @@ async function main() {
       }
     }
 
-    // Quote cooldown: skip recalculation if < 10s since last quote for this market
-    const now = Date.now();
-    const lastQuote = lastQuoteTime.get(market.conditionId) || 0;
-    if (now - lastQuote < QUOTE_COOLDOWN_MS) return;
-    lastQuoteTime.set(market.conditionId, now);
-
-    const toxicityScore = 0.1;
-    const inventorySkew = getInventorySkew(market.yesTokenId);
     const activitySnapshot = activityTracker.snapshot();
     const pos = pnlTracker.getPosition(market.yesTokenId);
+    const hasActiveQuotes = Boolean(ao.buy || ao.sell);
     const riskDecision = riskManager.evaluateMarket({
       mode: env.mode,
       conditionId: market.conditionId,
@@ -191,22 +212,33 @@ async function main() {
       book: yesBook,
       currentFair: yesFair.fairPrice,
       primaryMarketQuoteSharePct: activitySnapshot.primaryMarketQuoteSharePct,
-      hasActiveQuotes: paperEngine.getOpenOrders().some(o => o.tokenId === market.yesTokenId),
-      isBookStale: isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs),
+      hasActiveQuotes,
+      isBookStale: bookStale,
       killSwitchActive: false,
     });
     latestRiskDecisions.set(market.conditionId, riskDecision);
 
-    let ao = activeOrders.get(market.conditionId);
-    if (!ao) {
-      ao = { buy: null, sell: null };
-      activeOrders.set(market.conditionId, ao);
+    if (bookStale) {
+      if (hasActiveQuotes) {
+        cancelMarketOrders(market.conditionId);
+      }
+      return;
     }
+
+    // Quote cooldown: skip recalculation if < 10s since last quote for this market
+    const now = Date.now();
+    const lastQuote = lastQuoteTime.get(market.conditionId) || 0;
+    if (now - lastQuote < QUOTE_COOLDOWN_MS) return;
+    lastQuoteTime.set(market.conditionId, now);
+
+    const toxicityScore = 0.1;
+    const inventorySkew = getInventorySkew(market.yesTokenId);
 
     for (const side of ['BUY', 'SELL'] as const) {
       const aoKey = side === 'BUY' ? 'buy' : 'sell';
       if ((side === 'BUY' && !riskDecision.allowBuy) || (side === 'SELL' && !riskDecision.allowSell)) {
         activityTracker.recordQuoteRejected(market.conditionId);
+        cancelSideOrder(ao, side);
         continue;
       }
       const maxPos = env.maxExposureUsd / 100;
