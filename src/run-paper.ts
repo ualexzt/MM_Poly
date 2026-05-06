@@ -5,6 +5,7 @@ import { GammaApiScanner } from './data/gamma-market-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
 import { PaperExecutionEngine } from './simulation/paper-execution-engine';
 import { PaperPnlTracker } from './accounting/paper-pnl-tracker';
+import { TradingActivityTracker } from './accounting/trading-activity-tracker';
 import { defaultConfig } from './strategy/config';
 import { ConsoleLogger } from './utils/logger';
 import { TelegramNotifier } from './notifier/telegram';
@@ -14,6 +15,8 @@ import { generateQuoteCandidate } from './engines/quote-engine';
 import { createTrace } from './accounting/decision-trace';
 import { KillSwitch } from './risk/kill-switch';
 import { isBookStale } from './risk/stale-book-guard';
+import { MarketRiskDecision, maxRiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
+import { formatTelegramRiskReport } from './reporting/telegram-risk-report';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
@@ -39,6 +42,11 @@ async function main() {
   const paperEngine = new PaperExecutionEngine();
   const pnlTracker = new PaperPnlTracker();
   const killSwitch = new KillSwitch(defaultConfig.risk);
+  const startedAt = new Date();
+  let warningsCount = 0;
+  let errorsCount = 0;
+  const activityTracker = new TradingActivityTracker();
+  const latestRiskDecisions = new Map<string, MarketRiskDecision>();
 
   // Apply env overrides
   const config = {
@@ -59,6 +67,15 @@ async function main() {
     }
   };
 
+  const riskManager = new StrategyRiskManager({
+    softInventoryLimitPct: config.inventory.softLimitPct,
+    reduceOnlyInventoryLimitPct: 70,
+    hardInventoryLimitPct: config.inventory.hardLimitPct,
+    maxMarketExposureContracts: Math.max(1, config.inventory.maxMarketExposureUsd),
+    concentrationWarningPct: 90,
+    concentrationCriticalPctLive: 90,
+  });
+
   logger.info('=== Polymarket MM Strategy — Paper Trading ===');
   logger.info(`Mode: ${env.mode}`);
   logger.info('Data source: WebSocket live stream');
@@ -78,6 +95,7 @@ async function main() {
     eligible = filterEligibleMarkets(markets, config.marketFilter);
     logger.info(`Loaded ${markets.length} markets, ${eligible.length} eligible`);
   } catch (err) {
+    errorsCount += 1;
     logger.error('Failed to load markets', { error: String(err) });
     process.exit(1);
   }
@@ -96,6 +114,7 @@ async function main() {
         books.set(market.noTokenId, book);
       }
     } catch (err) {
+      warningsCount += 1;
       logger.warn('Initial book fetch failed', { conditionId: market.conditionId, error: String(err) });
     }
   }
@@ -143,6 +162,7 @@ async function main() {
           continue;
         }
         pnlTracker.onFill(fill, yesFair.fairPrice);
+        activityTracker.recordFill(market.conditionId, fill);
         logger.info('Paper fill', {
           side: fill.side,
           price: fill.filledPrice,
@@ -161,6 +181,21 @@ async function main() {
 
     const toxicityScore = 0.1;
     const inventorySkew = getInventorySkew(market.yesTokenId);
+    const activitySnapshot = activityTracker.snapshot();
+    const pos = pnlTracker.getPosition(market.yesTokenId);
+    const riskDecision = riskManager.evaluateMarket({
+      mode: env.mode,
+      conditionId: market.conditionId,
+      tokenId: market.yesTokenId,
+      position: pos,
+      book: yesBook,
+      currentFair: yesFair.fairPrice,
+      primaryMarketQuoteSharePct: activitySnapshot.primaryMarketQuoteSharePct,
+      hasActiveQuotes: paperEngine.getOpenOrders().some(o => o.tokenId === market.yesTokenId),
+      isBookStale: isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs),
+      killSwitchActive: false,
+    });
+    latestRiskDecisions.set(market.conditionId, riskDecision);
 
     let ao = activeOrders.get(market.conditionId);
     if (!ao) {
@@ -170,7 +205,10 @@ async function main() {
 
     for (const side of ['BUY', 'SELL'] as const) {
       const aoKey = side === 'BUY' ? 'buy' : 'sell';
-      const pos = pnlTracker.getPosition(market.yesTokenId);
+      if ((side === 'BUY' && !riskDecision.allowBuy) || (side === 'SELL' && !riskDecision.allowSell)) {
+        activityTracker.recordQuoteRejected(market.conditionId);
+        continue;
+      }
       const maxPos = env.maxExposureUsd / 100;
       const inventoryPct = Math.min(100, (Math.abs(pos?.netSize || 0) / maxPos) * 100);
 
@@ -239,6 +277,7 @@ async function main() {
         });
 
         logger.trace(trace);
+        activityTracker.recordQuoteGenerated(market.conditionId);
       }
     }
   }
@@ -261,7 +300,10 @@ async function main() {
         }
       }
     },
-    (err) => logger.error('WS error', { error: err.message })
+    (err) => {
+      errorsCount += 1;
+      logger.error('WS error', { error: err.message });
+    }
   );
 
   ws.connect(tokenIds.slice(0, WS_TOKEN_LIMIT));
@@ -287,18 +329,45 @@ async function main() {
       // Start new day tracking
       pnlTracker.startNewDay(dateStr);
 
-      const text = `
-📊 <b>Paper Trading Report — ${report.date}</b>
+      const activity = activityTracker.snapshot();
+      const cumulativeRealized = pnlTracker.getCumulativeRealizedPnl();
+      const unrealizedFairBased = report.unrealizedPnl;
+      const estimatedTotalPnl = cumulativeRealized + unrealizedFairBased + report.estimatedRebate;
+      const allDecisions = Array.from(latestRiskDecisions.values());
+      const globalRiskStatus = maxRiskStatus(allDecisions.map(d => d.riskStatus));
+      const topDecision = activity.primaryMarketConditionId
+        ? latestRiskDecisions.get(activity.primaryMarketConditionId) ?? null
+        : allDecisions[0] ?? null;
+      const realizedAbs = Math.abs(cumulativeRealized);
+      const unrealizedToRealizedRatio = realizedAbs > 0 ? Math.abs(unrealizedFairBased) / realizedAbs : null;
+      const marketTitleByConditionId = new Map(markets.map(m => [m.conditionId, m.question ?? m.conditionId]));
 
-<b>Realized PnL:</b> $${report.realizedPnl.toFixed(2)}
-<b>Unrealized PnL:</b> $${report.unrealizedPnl.toFixed(2)}
-<b>Est. Maker Rebate:</b> $${report.estimatedRebate.toFixed(2)}
-<b>Spread Capture:</b> $${report.spreadCapture.toFixed(2)}
-<b>Open Positions:</b> ${report.openPositions}
-<b>Total Trades:</b> ${report.totalTrades}
-
-<i>Paper mode — no real money at risk</i>
-      `.trim();
+      const text = formatTelegramRiskReport({
+        mode: env.mode,
+        startedAt,
+        reportAt: new Date(),
+        warningsCount,
+        errorsCount,
+        pnl: {
+          realizedPeriod: report.realizedPnl,
+          realizedCumulative: cumulativeRealized,
+          unrealizedFairBased,
+          estimatedMakerRebate: report.estimatedRebate,
+          estimatedTotalPnl,
+          valuationMode: 'fair',
+        },
+        activity,
+        risk: {
+          status: globalRiskStatus,
+          reasons: Array.from(new Set(allDecisions.flatMap(d => d.reasons))),
+          reduceOnlyActive: allDecisions.some(d => d.reduceOnly),
+          killSwitchActive: false,
+          topMarketDecision: topDecision,
+          singleMarketConcentrationPct: activity.primaryMarketQuoteSharePct,
+          unrealizedToRealizedRatio,
+        },
+        marketTitleByConditionId,
+      });
 
       await telegram.sendMessage(text);
       scheduleReport(hourUtc);
