@@ -92,7 +92,7 @@ export class StrategyRiskManager {
       }
     }
 
-    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.hardInventoryLimitPct) {
+    if (inventoryUsagePct !== null && inventoryUsagePct > this.config.hardInventoryLimitPct) {
       reasons.push('inventory_limit_above_90_pct');
     }
 

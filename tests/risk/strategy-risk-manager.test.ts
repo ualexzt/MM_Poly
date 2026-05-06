@@ -138,6 +138,28 @@ describe('StrategyRiskManager', () => {
     expect(decision.worstCaseLossToZero).toBeNull();
   });
 
+  test('computes long fair pnl, exit pnl, and worst case to zero', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 10, avgCost: 0.40 }),
+      book: makeBook({ bestBid: 0.44 }),
+      currentFair: 0.45,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.fairUnrealizedPnl).toBeCloseTo(0.50);
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(0.40);
+    expect(decision.worstCaseLossToZero).toBeCloseTo(4.00);
+    expect(decision.worstCaseLossToOne).toBeNull();
+  });
+
   test('escalates concentration above warning threshold', () => {
     const manager = new StrategyRiskManager(config);
 
@@ -158,6 +180,47 @@ describe('StrategyRiskManager', () => {
     expect(decision.reasons).toContain('single_market_concentration_above_90_pct');
   });
 
+  test('keeps exactly hard inventory threshold at warning', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -90, avgCost: 0.62 }),
+      book: makeBook(),
+      currentFair: 0.55,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reduceOnly).toBe(true);
+    expect(decision.reasons).not.toContain('inventory_limit_above_90_pct');
+  });
+
+  test('escalates just above hard inventory threshold to critical', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -90.01, avgCost: 0.62 }),
+      book: makeBook(),
+      currentFair: 0.55,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('inventory_limit_above_90_pct');
+  });
+
   test('escalates hard inventory breach to critical', () => {
     const manager = new StrategyRiskManager(config);
 
@@ -176,5 +239,69 @@ describe('StrategyRiskManager', () => {
 
     expect(decision.riskStatus).toBe('CRITICAL');
     expect(decision.reasons).toContain('inventory_limit_above_90_pct');
+  });
+
+  test('blocks both sides and escalates stale book with active quotes to critical', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 20, avgCost: 0.40 }),
+      book: makeBook(),
+      currentFair: 0.45,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: true,
+      killSwitchActive: false,
+    });
+
+    expect(decision.allowBuy).toBe(false);
+    expect(decision.allowSell).toBe(false);
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('stale_book_with_active_quotes');
+  });
+
+  test('blocks both sides and escalates kill switch to critical', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 20, avgCost: 0.40 }),
+      book: makeBook(),
+      currentFair: 0.45,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: true,
+    });
+
+    expect(decision.allowBuy).toBe(false);
+    expect(decision.allowSell).toBe(false);
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('kill_switch_active');
+  });
+
+  test('escalates small live concentration above critical threshold to critical', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'small_live',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 10, avgCost: 0.40 }),
+      book: makeBook(),
+      currentFair: 0.45,
+      primaryMarketQuoteSharePct: 90.01,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('live_single_market_concentration_critical');
   });
 });
