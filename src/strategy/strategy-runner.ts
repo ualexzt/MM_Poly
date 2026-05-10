@@ -267,13 +267,23 @@ export class StrategyRunner {
 
     // §11.1 steps 10-14 — Generate, validate, diff, cancel stale, submit
     const slots = this._getOrCreateSlots(market.conditionId);
+    const tokenBalance = this.inventory.getTokenBalance(market.yesTokenId);
+
+    // Determine which side reduces current inventory (§9.4)
+    const inventoryReducingSide: 'BUY' | 'SELL' | null =
+      tokenBalance > 0 ? 'SELL' : tokenBalance < 0 ? 'BUY' : null;
 
     for (const side of ['BUY', 'SELL'] as const) {
-      // §9.4 — exit-only: only reduce inventory
-      if ((exitOnly || invState.hardLimitBreached) && side === 'BUY') continue;
+      // §9.4 — exit-only / hard-limit: only quote on the side that reduces inventory
+      if (
+        (exitOnly || invState.hardLimitBreached) &&
+        inventoryReducingSide !== null &&
+        side !== inventoryReducingSide
+      ) {
+        continue;
+      }
 
       // §9.5 — Sell guard
-      const tokenBalance = this.inventory.getTokenBalance(market.yesTokenId);
       if (side === 'SELL' && !checkSellInventoryAvailable(side, 0.1, tokenBalance)) {
         logger.info('No sell inventory', { conditionId: market.conditionId });
         continue;
@@ -304,7 +314,9 @@ export class StrategyRunner {
 
       // §5 / §12.2 — Exposure limits check before submit (C5)
       const exposureCheck = checkExposureLimits(invState, config.inventory);
-      const exposureAllowed = exposureCheck.allowed || side === 'SELL'; // sells reduce exposure
+      const exposureAllowed =
+        exposureCheck.allowed ||
+        (inventoryReducingSide !== null && side === inventoryReducingSide);
 
       // §12.2 — Sell inventory check
       const sellInventoryAvailable = checkSellInventoryAvailable(side, candidate.size, tokenBalance);
