@@ -47,7 +47,7 @@ async function main() {
   const tokenIds = eligible.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean);
 
   // Pre-fetch initial books via REST for immediate evaluation
-  for (const market of eligible.slice(0, 5)) {
+  for (const market of eligible.slice(0, env.maxMarkets)) {
     try {
       if (market.yesTokenId) {
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
@@ -141,7 +141,7 @@ async function main() {
   }
 
   // Evaluate all markets with initial books
-  for (const market of eligible.slice(0, 5)) {
+  for (const market of eligible.slice(0, env.maxMarkets)) {
     evaluateMarket(market);
   }
 
@@ -158,7 +158,7 @@ async function main() {
     (err) => logger.error('WS error', { error: err.message })
   );
 
-  ws.connect(tokenIds.slice(0, 10)); // limit to 10 tokens for WS
+  ws.connect(tokenIds); // subscribe to all token ids for tracked markets
 
   logger.info('Shadow mode active via WebSocket. Press Ctrl+C to stop.');
 }

@@ -12,6 +12,7 @@ export interface EnvConfig {
   maxDrawdownPct: number;
   dailyReportHour: number;
   dailyReportMinute: number;
+  maxMarkets: number;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -51,4 +52,5 @@ export const env: EnvConfig = {
   maxDrawdownPct: getEnvFloat('MAX_DRAWDOWN_PCT', 0.02),
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
   dailyReportMinute: getEnvInt('DAILY_REPORT_MINUTE', 0),
+  maxMarkets: getEnvInt('MAX_MARKETS', 20),
 };

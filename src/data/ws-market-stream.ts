@@ -1,4 +1,15 @@
 import WebSocket from 'ws';
+
+export const SUBSCRIBE_BATCH_SIZE = 20;
+
+export function buildSubscribeMessages(tokenIds: string[]): string[] {
+  const messages: string[] = [];
+  for (let i = 0; i < tokenIds.length; i += SUBSCRIBE_BATCH_SIZE) {
+    const batch = tokenIds.slice(i, i + SUBSCRIBE_BATCH_SIZE);
+    messages.push(JSON.stringify({ type: 'market', assets_ids: batch }));
+  }
+  return messages;
+}
 import { BookState, BookLevel } from '../types/book';
 
 export interface WsMarketUpdate {
@@ -78,8 +89,8 @@ export class WsMarketStream {
 
   private subscribe(tokenIds: string[]): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    for (const id of tokenIds) {
-      this.ws.send(JSON.stringify({ type: 'market', assets_ids: [id] }));
+    for (const msg of buildSubscribeMessages(tokenIds)) {
+      this.ws.send(msg);
     }
   }
 

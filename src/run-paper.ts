@@ -129,7 +129,7 @@ async function main() {
   const tokenIds = eligible.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean);
 
   // Pre-fetch initial books
-  for (const market of eligible.slice(0, 5)) {
+  for (const market of eligible.slice(0, env.maxMarkets)) {
     try {
       if (market.yesTokenId) {
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
@@ -329,7 +329,7 @@ async function main() {
   }
 
   // Initial evaluation
-  for (const market of eligible.slice(0, 5)) {
+  for (const market of eligible.slice(0, env.maxMarkets)) {
     evaluateMarket(market);
   }
 
