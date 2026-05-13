@@ -19,7 +19,7 @@ export const defaultConfig: StrategyConfig = {
   spread: {
     minHalfSpreadTicks: 1, baseHalfSpreadCents: 1.0,
     volatilityMultiplier: 0.8, adverseSelectionBufferCents: 0.5,
-    toxicityWideningMaxCents: 3.0, inventoryWideningMaxCents: 2.0,
+    toxicityWideningMaxCents: 3.0, inventoryWideningMaxCents: 3.5,
     rewardTighteningMaxCents: 0.5
   },
   size: {
@@ -30,16 +30,16 @@ export const defaultConfig: StrategyConfig = {
   inventory: {
     maxMarketExposureUsd: 10, maxEventExposureUsd: 25,
     maxTotalStrategyExposureUsd: 100,
-    softLimitPct: 35, hardLimitPct: 65,
-    maxSkewCents: 3.0, skewSensitivity: 0.35
+    softLimitPct: 25, hardLimitPct: 50,
+    maxSkewCents: 4.5, skewSensitivity: 0.70
   },
   toxicity: {
-    cancelIfMidpointMoves10sCentsGte: 1.5,
+    cancelIfMidpointMoves10sCentsGte: 1.0,
     cancelIfMidpointMoves60sCentsGte: 3.0,
     cancelIfLargeTradeUsdGte: 1000,
     cancelIfHashChanges10sGte: 8,
     cancelIfSpreadTicksLte: 1,
-    cooldownAfterCancelSeconds: 20
+    cooldownAfterCancelSeconds: 30
   },
   risk: {
     maxDailyDrawdownPct: 2, maxStrategyDrawdownPct: 5,
