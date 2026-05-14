@@ -379,11 +379,20 @@ async function main() {
       const cumulativeRealized = pnlTracker.getCumulativeRealizedPnl();
       const unrealizedFairBased = report.unrealizedPnl;
       const estimatedTotalPnl = cumulativeRealized + unrealizedFairBased + report.estimatedRebate;
-      const allDecisions = Array.from(latestRiskDecisions.values());
-      const globalRiskStatus = maxRiskStatus(allDecisions.map(d => d.riskStatus));
+      
+      // Filter out risk decisions for markets that are not active or don't have current quotes
+      // This prevents stale markets from artificially inflating the risk status and reasons in the report.
+      const nowMs = Date.now();
+      const recentDecisions = Array.from(latestRiskDecisions.values()).filter(d => {
+          const lastQuoteTimeMs = lastQuoteTime.get(d.conditionId) || 0;
+          return (nowMs - lastQuoteTimeMs) < 60_000; // Consider it relevant if we quoted within the last 60s
+      });
+      const allDecisionsToReport = recentDecisions.length > 0 ? recentDecisions : Array.from(latestRiskDecisions.values());
+
+      const globalRiskStatus = maxRiskStatus(allDecisionsToReport.map(d => d.riskStatus));
       const topDecision = activity.primaryMarketConditionId
         ? latestRiskDecisions.get(activity.primaryMarketConditionId) ?? null
-        : allDecisions[0] ?? null;
+        : allDecisionsToReport[0] ?? null;
       const realizedAbs = Math.abs(cumulativeRealized);
       const unrealizedToRealizedRatio = realizedAbs > 0 ? Math.abs(unrealizedFairBased) / realizedAbs : null;
       const marketTitleByConditionId = new Map(markets.map(m => [m.conditionId, m.question ?? m.conditionId]));
@@ -405,8 +414,8 @@ async function main() {
         activity,
         risk: {
           status: globalRiskStatus,
-          reasons: Array.from(new Set(allDecisions.flatMap(d => d.reasons))),
-          reduceOnlyActive: allDecisions.some(d => d.reduceOnly),
+          reasons: Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons))),
+          reduceOnlyActive: allDecisionsToReport.some(d => d.reduceOnly),
           killSwitchActive: false,
           topMarketDecision: topDecision,
           singleMarketConcentrationPct: activity.primaryMarketQuoteSharePct,

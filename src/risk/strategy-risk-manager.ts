@@ -78,7 +78,7 @@ export class StrategyRiskManager {
     let allowSell = true;
 
     if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.softInventoryLimitPct) {
-      reasons.push('inventory_usage_above_50_pct');
+      reasons.push('inventory_soft_limit_exceeded');
     }
 
     if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyInventoryLimitPct) {
@@ -93,14 +93,14 @@ export class StrategyRiskManager {
     }
 
     if (inventoryUsagePct !== null && inventoryUsagePct > this.config.hardInventoryLimitPct) {
-      reasons.push('inventory_limit_above_90_pct');
+      reasons.push('inventory_hard_limit_exceeded');
     }
 
     if (
       input.primaryMarketQuoteSharePct !== null &&
       input.primaryMarketQuoteSharePct > this.config.concentrationWarningPct
     ) {
-      reasons.push('single_market_concentration_above_90_pct');
+      reasons.push('single_market_concentration_warning');
     }
 
     if (
@@ -108,7 +108,7 @@ export class StrategyRiskManager {
       input.primaryMarketQuoteSharePct !== null &&
       input.primaryMarketQuoteSharePct > this.config.concentrationCriticalPctLive
     ) {
-      reasons.push('live_single_market_concentration_critical');
+      reasons.push('single_market_concentration_critical');
     }
 
     if (input.isBookStale && input.hasActiveQuotes) {
@@ -184,13 +184,13 @@ export class StrategyRiskManager {
     if (
       reasons.includes('kill_switch_active') ||
       reasons.includes('stale_book_with_active_quotes') ||
-      reasons.includes('inventory_limit_above_90_pct') ||
-      reasons.includes('live_single_market_concentration_critical')
+      reasons.includes('inventory_hard_limit_exceeded') ||
+      reasons.includes('single_market_concentration_critical')
     ) {
       return 'CRITICAL';
     }
 
-    if (reasons.includes('single_market_concentration_above_90_pct')) {
+    if (reasons.includes('single_market_concentration_warning')) {
       return 'WARNING';
     }
 

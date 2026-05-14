@@ -54,7 +54,8 @@ npm run start:live    # Real post-only orders (requires explicit config flag)
 ## Version Control & Deployment
 
 - **Mandatory Commits:** You must commit and push all changes to the repository immediately after making any modifications, fixing bugs, or adding new features.
-- **Production Deployment:** To deploy changes to the production environment, connect via SSH, navigate to the project directory, pull the latest changes, and rebuild/restart using Docker Compose:
+- **Production Deployment:** To deploy changes to the production environment, connect via SSH and navigate to the project directory:
   ```bash
-  ssh -o StrictHostKeyChecking=no oraculus@46.225.147.43 'cd /opt/polymarketmm && git pull && docker compose up -d --build'
+  ssh oraculus@46.225.147.43
+  cd /opt/polymarketmm
   ```

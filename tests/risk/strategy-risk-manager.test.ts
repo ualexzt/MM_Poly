@@ -177,7 +177,7 @@ describe('StrategyRiskManager', () => {
     });
 
     expect(decision.riskStatus).toBe('WARNING');
-    expect(decision.reasons).toContain('single_market_concentration_above_90_pct');
+    expect(decision.reasons).toContain('single_market_concentration_warning');
   });
 
   test('keeps exactly hard inventory threshold at warning', () => {
@@ -218,7 +218,7 @@ describe('StrategyRiskManager', () => {
     });
 
     expect(decision.riskStatus).toBe('CRITICAL');
-    expect(decision.reasons).toContain('inventory_limit_above_90_pct');
+    expect(decision.reasons).toContain('inventory_hard_limit_exceeded');
   });
 
   test('escalates hard inventory breach to critical', () => {
@@ -238,7 +238,7 @@ describe('StrategyRiskManager', () => {
     });
 
     expect(decision.riskStatus).toBe('CRITICAL');
-    expect(decision.reasons).toContain('inventory_limit_above_90_pct');
+    expect(decision.reasons).toContain('inventory_hard_limit_exceeded');
   });
 
   test('blocks both sides and escalates stale book with active quotes to critical', () => {
@@ -302,6 +302,6 @@ describe('StrategyRiskManager', () => {
     });
 
     expect(decision.riskStatus).toBe('CRITICAL');
-    expect(decision.reasons).toContain('live_single_market_concentration_critical');
+    expect(decision.reasons).toContain('single_market_concentration_critical');
   });
 });
