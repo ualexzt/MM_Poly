@@ -3,8 +3,8 @@ import { Position } from '../../src/accounting/paper-pnl-tracker';
 import { BookState } from '../../src/types/book';
 
 const config: StrategyRiskConfig = {
-  softInventoryLimitPct: 50,
-  reduceOnlyInventoryLimitPct: 70,
+  softInventoryLimitPct: 25,
+  reduceOnlyLimitPct: 70,
   hardInventoryLimitPct: 90,
   maxMarketExposureContracts: 100,
   concentrationWarningPct: 90,

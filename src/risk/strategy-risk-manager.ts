@@ -7,7 +7,7 @@ export type StrategyMode = 'paper' | 'shadow' | 'small_live' | 'disabled';
 
 export interface StrategyRiskConfig {
   softInventoryLimitPct: number;
-  reduceOnlyInventoryLimitPct: number;
+  reduceOnlyLimitPct: number;
   hardInventoryLimitPct: number;
   maxMarketExposureContracts: number;
   concentrationWarningPct: number;
@@ -81,7 +81,7 @@ export class StrategyRiskManager {
       reasons.push('inventory_soft_limit_exceeded');
     }
 
-    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyInventoryLimitPct) {
+    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyLimitPct) {
       reduceOnly = true;
       if (netPosition < 0) {
         allowSell = false;
@@ -194,7 +194,7 @@ export class StrategyRiskManager {
       return 'WARNING';
     }
 
-    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyInventoryLimitPct) {
+    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyLimitPct) {
       return 'WARNING';
     }
 

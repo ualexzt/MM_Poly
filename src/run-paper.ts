@@ -72,7 +72,7 @@ async function main() {
 
   const riskManager = new StrategyRiskManager({
     softInventoryLimitPct: config.inventory.softLimitPct,
-    reduceOnlyInventoryLimitPct: 70,
+    reduceOnlyLimitPct: config.inventory.reduceOnlyLimitPct,
     hardInventoryLimitPct: config.inventory.hardLimitPct,
     maxMarketExposureContracts: Math.max(1, config.inventory.maxMarketExposureUsd),
     concentrationWarningPct: 90,
@@ -341,7 +341,8 @@ async function main() {
         books.set(update.tokenId, update.book);
         const market = eligible.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
         if (market) {
-          const tradePrice = update.lastTradePrice ?? undefined;
+          // Only simulate fills if the trade occurred on the YES token
+          const tradePrice = update.tokenId === market.yesTokenId ? (update.lastTradePrice ?? undefined) : undefined;
           evaluateMarket(market, tradePrice);
         }
       }
@@ -385,7 +386,9 @@ async function main() {
       const nowMs = Date.now();
       const recentDecisions = Array.from(latestRiskDecisions.values()).filter(d => {
           const lastQuoteTimeMs = lastQuoteTime.get(d.conditionId) || 0;
-          return (nowMs - lastQuoteTimeMs) < 60_000; // Consider it relevant if we quoted within the last 60s
+          const quotedRecently = (nowMs - lastQuoteTimeMs) < 60_000;
+          const hasPosition = (pnlTracker.getPosition(d.tokenId)?.netSize ?? 0) !== 0;
+          return quotedRecently || hasPosition;
       });
       const allDecisionsToReport = recentDecisions.length > 0 ? recentDecisions : Array.from(latestRiskDecisions.values());
 

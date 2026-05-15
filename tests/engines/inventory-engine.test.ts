@@ -16,6 +16,7 @@ describe('inventory-engine', () => {
       strategyExposureUsd: 100,
       inventoryPct: 0,
       softLimitBreached: false,
+      reduceOnlyLimitBreached: false,
       hardLimitBreached: false,
       ...overrides
     };

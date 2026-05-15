@@ -30,8 +30,8 @@ describe('risk-gated paper report integration', () => {
     const pnlTracker = new PaperPnlTracker();
     const activityTracker = new TradingActivityTracker();
     const riskManager = new StrategyRiskManager({
-      softInventoryLimitPct: 50,
-      reduceOnlyInventoryLimitPct: 70,
+      softInventoryLimitPct: 25,
+      reduceOnlyLimitPct: 70,
       hardInventoryLimitPct: 90,
       maxMarketExposureContracts: 100,
       concentrationWarningPct: 90,

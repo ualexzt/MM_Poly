@@ -11,5 +11,6 @@ export interface InventoryState {
   strategyExposureUsd: number;
   inventoryPct: number;
   softLimitBreached: boolean;
+  reduceOnlyLimitBreached: boolean;
   hardLimitBreached: boolean;
 }

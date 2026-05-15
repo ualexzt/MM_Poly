@@ -47,6 +47,7 @@ export interface InventoryConfig {
   maxEventExposureUsd: number;
   maxTotalStrategyExposureUsd: number;
   softLimitPct: number;
+  reduceOnlyLimitPct: number;
   hardLimitPct: number;
   maxSkewCents: number;
   skewSensitivity: number;

@@ -94,8 +94,9 @@ export class InventoryTracker {
         ? (marketExposureUsd / this.config.maxMarketExposureUsd) * 100
         : 0;
 
-    const softLimitBreached = inventoryPct >= this.config.softLimitPct;   // 35
-    const hardLimitBreached = inventoryPct >= this.config.hardLimitPct;   // 65
+    const softLimitBreached = inventoryPct >= this.config.softLimitPct;
+    const reduceOnlyLimitBreached = inventoryPct >= this.config.reduceOnlyLimitPct;
+    const hardLimitBreached = inventoryPct >= this.config.hardLimitPct;
 
     return {
       conditionId,
@@ -110,6 +111,7 @@ export class InventoryTracker {
       strategyExposureUsd: totalExposureUsd,
       inventoryPct,
       softLimitBreached,
+      reduceOnlyLimitBreached,
       hardLimitBreached,
     };
   }
