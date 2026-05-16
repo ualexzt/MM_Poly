@@ -44,10 +44,11 @@ async function main() {
     process.exit(1);
   }
 
-  const tokenIds = eligible.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean);
+  const activeMarkets = eligible.slice(0, env.maxMarkets);
+  const tokenIds = activeMarkets.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean) as string[];
 
   // Pre-fetch initial books via REST for immediate evaluation
-  for (const market of eligible.slice(0, env.maxMarkets)) {
+  for (const market of activeMarkets) {
     try {
       if (market.yesTokenId) {
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
@@ -141,7 +142,7 @@ async function main() {
   }
 
   // Evaluate all markets with initial books
-  for (const market of eligible.slice(0, env.maxMarkets)) {
+  for (const market of activeMarkets) {
     evaluateMarket(market);
   }
 
@@ -151,7 +152,7 @@ async function main() {
     (update) => {
       if (update.book) {
         books.set(update.tokenId, update.book);
-        const market = eligible.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
+        const market = activeMarkets.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
         if (market) evaluateMarket(market);
       }
     },

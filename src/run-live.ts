@@ -46,7 +46,7 @@ async function main() {
       const eligible = filterEligibleMarkets(markets, defaultConfig.marketFilter);
       logger.info(`Markets: ${markets.length} total, ${eligible.length} eligible`);
 
-      for (const market of eligible.slice(0, 3)) { // limit to 3 markets per cycle
+      for (const market of eligible.slice(0, env.maxMarkets)) { // limit to maxMarkets per cycle
         try {
           if (!market.yesTokenId || !market.noTokenId) continue;
 

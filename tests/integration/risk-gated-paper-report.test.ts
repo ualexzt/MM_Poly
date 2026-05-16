@@ -90,6 +90,7 @@ describe('risk-gated paper report integration', () => {
         reasons: decision.reasons,
         reduceOnlyActive: decision.reduceOnly,
         killSwitchActive: false,
+        openPositions: 1,
         topMarketDecision: decision,
         singleMarketConcentrationPct: activity.primaryMarketQuoteSharePct,
         unrealizedToRealizedRatio: null,

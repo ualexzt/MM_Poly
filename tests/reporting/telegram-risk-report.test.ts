@@ -39,6 +39,7 @@ function makeInput(overrides: Partial<TelegramRiskReportInput> = {}): TelegramRi
       reasons: ['single_market_concentration_above_90_pct', 'reduce_only_short_inventory'],
       reduceOnlyActive: true,
       killSwitchActive: false,
+      openPositions: 1,
       topMarketDecision: {
         conditionId: 'market-1',
         tokenId: 'token-yes',
@@ -104,6 +105,7 @@ describe('formatTelegramRiskReport', () => {
         reasons: [],
         reduceOnlyActive: false,
         killSwitchActive: false,
+        openPositions: 0,
         topMarketDecision: null,
         singleMarketConcentrationPct: null,
         unrealizedToRealizedRatio: null,

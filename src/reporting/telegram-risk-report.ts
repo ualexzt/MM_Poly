@@ -21,6 +21,7 @@ export interface TelegramRiskReportInput {
     reasons: string[];
     reduceOnlyActive: boolean;
     killSwitchActive: boolean;
+    openPositions: number;
     topMarketDecision: MarketRiskDecision | null;
     singleMarketConcentrationPct: number | null;
     unrealizedToRealizedRatio: number | null;
@@ -32,7 +33,7 @@ export function formatTelegramRiskReport(input: TelegramRiskReportInput): string
   const top = input.risk.topMarketDecision;
   const marketTitle = getMarketTitle(input, top);
   const position = formatPosition(top);
-  const openPositions = top && top.netPosition !== 0 ? 1 : 0;
+  const openPositions = input.risk.openPositions;
   const bidAsk = formatBidAsk(top);
   const quoteShare = formatQuoteShare(input.activity.primaryMarketQuoteTraces, input.activity.quoteTraces);
   const worstCase = formatWorstCase(top);

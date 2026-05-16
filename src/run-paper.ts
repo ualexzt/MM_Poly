@@ -22,7 +22,6 @@ import { MarketState } from './types/market';
 const QUOTE_COOLDOWN_MS = 10000;   // 10 sec between quote recalculation per market
 const ORDER_TTL_MS = 60000;        // 60 sec max lifetime for an order before replace
 const PRICE_EPSILON = 0.005;       // half tick — treat as same price
-const WS_TOKEN_LIMIT = 10;
 // Kyiv time reports: 08:00 and 20:00 Kyiv = 05:00 and 17:00 UTC
 const REPORT_HOURS_UTC = [5, 17];
 
@@ -126,10 +125,11 @@ async function main() {
     process.exit(1);
   }
 
-  const tokenIds = eligible.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean);
+  const activeMarkets = eligible.slice(0, env.maxMarkets);
+  const tokenIds = activeMarkets.flatMap(m => [m.yesTokenId, m.noTokenId]).filter(Boolean) as string[];
 
   // Pre-fetch initial books
-  for (const market of eligible.slice(0, env.maxMarkets)) {
+  for (const market of activeMarkets) {
     try {
       if (market.yesTokenId) {
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
@@ -329,7 +329,7 @@ async function main() {
   }
 
   // Initial evaluation
-  for (const market of eligible.slice(0, env.maxMarkets)) {
+  for (const market of activeMarkets) {
     evaluateMarket(market);
   }
 
@@ -339,7 +339,7 @@ async function main() {
     (update) => {
       if (update.book) {
         books.set(update.tokenId, update.book);
-        const market = eligible.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
+        const market = activeMarkets.find(m => m.yesTokenId === update.tokenId || m.noTokenId === update.tokenId);
         if (market) {
           // Only simulate fills if the trade occurred on the YES token
           const tradePrice = update.tokenId === market.yesTokenId ? (update.lastTradePrice ?? undefined) : undefined;
@@ -353,7 +353,7 @@ async function main() {
     }
   );
 
-  ws.connect(tokenIds.slice(0, WS_TOKEN_LIMIT));
+  ws.connect(tokenIds);
 
   // Report scheduler — 08:00 and 20:00 Kyiv (05:00 & 17:00 UTC)
   function scheduleReport(hourUtc: number) {
@@ -396,6 +396,7 @@ async function main() {
       const topDecision = activity.primaryMarketConditionId
         ? latestRiskDecisions.get(activity.primaryMarketConditionId) ?? null
         : allDecisionsToReport[0] ?? null;
+      const openPositionsCount = Array.from(latestRiskDecisions.values()).filter(d => (pnlTracker.getPosition(d.tokenId)?.netSize ?? 0) !== 0).length;
       const realizedAbs = Math.abs(cumulativeRealized);
       const unrealizedToRealizedRatio = realizedAbs > 0 ? Math.abs(unrealizedFairBased) / realizedAbs : null;
       const marketTitleByConditionId = new Map(markets.map(m => [m.conditionId, m.question ?? m.conditionId]));
@@ -420,6 +421,7 @@ async function main() {
           reasons: Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons))),
           reduceOnlyActive: allDecisionsToReport.some(d => d.reduceOnly),
           killSwitchActive: false,
+          openPositions: openPositionsCount,
           topMarketDecision: topDecision,
           singleMarketConcentrationPct: activity.primaryMarketQuoteSharePct,
           unrealizedToRealizedRatio,
