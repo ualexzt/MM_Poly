@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 
-export const SUBSCRIBE_BATCH_SIZE = 20;
+export const SUBSCRIBE_BATCH_SIZE = 100;
 
 export function buildSubscribeMessages(tokenIds: string[]): string[] {
   const messages: string[] = [];

@@ -1,21 +1,21 @@
 import { buildSubscribeMessages } from '../../src/data/ws-market-stream';
 
 describe('buildSubscribeMessages', () => {
-  test('batches token ids into chunks of 20', () => {
-    const tokenIds = Array.from({ length: 45 }, (_, i) => `token-${i}`);
+  test('batches token ids into chunks of 100', () => {
+    const tokenIds = Array.from({ length: 220 }, (_, i) => `token-${i}`);
     const messages = buildSubscribeMessages(tokenIds);
     expect(messages).toHaveLength(3);
     expect(JSON.parse(messages[0])).toEqual({
       type: 'market',
-      assets_ids: tokenIds.slice(0, 20),
+      assets_ids: tokenIds.slice(0, 100),
     });
     expect(JSON.parse(messages[1])).toEqual({
       type: 'market',
-      assets_ids: tokenIds.slice(20, 40),
+      assets_ids: tokenIds.slice(100, 200),
     });
     expect(JSON.parse(messages[2])).toEqual({
       type: 'market',
-      assets_ids: tokenIds.slice(40, 45),
+      assets_ids: tokenIds.slice(200, 220),
     });
   });
 
