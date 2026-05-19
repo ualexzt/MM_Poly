@@ -9,7 +9,7 @@ export interface StrategyRiskConfig {
   softInventoryLimitPct: number;
   reduceOnlyLimitPct: number;
   hardInventoryLimitPct: number;
-  maxMarketExposureContracts: number;
+  maxMarketExposureUsd: number;
   concentrationWarningPct: number;
   concentrationCriticalPctLive: number;
 }
@@ -70,7 +70,7 @@ export class StrategyRiskManager {
     const absPosition = Math.abs(netPosition);
     const positionSide = this.getPositionSide(netPosition);
     const avgEntryPrice = input.position && netPosition !== 0 ? input.position.avgCost : null;
-    const inventoryUsagePct = this.computeInventoryUsagePct(absPosition);
+    const inventoryUsagePct = this.computeInventoryUsagePct(absPosition, input.currentFair);
 
     const reasons: string[] = [];
     let reduceOnly = false;
@@ -145,9 +145,10 @@ export class StrategyRiskManager {
     };
   }
 
-  private computeInventoryUsagePct(absPosition: number): number | null {
-    if (this.config.maxMarketExposureContracts <= 0) return null;
-    return (absPosition / this.config.maxMarketExposureContracts) * 100;
+  private computeInventoryUsagePct(absPosition: number, currentFair: number | null): number | null {
+    if (this.config.maxMarketExposureUsd <= 0 || currentFair === null) return null;
+    const exposureUsd = absPosition * currentFair;
+    return (exposureUsd / this.config.maxMarketExposureUsd) * 100;
   }
 
   private getPositionSide(netPosition: number): PositionSide {

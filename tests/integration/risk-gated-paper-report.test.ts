@@ -33,7 +33,7 @@ describe('risk-gated paper report integration', () => {
       softInventoryLimitPct: 25,
       reduceOnlyLimitPct: 70,
       hardInventoryLimitPct: 90,
-      maxMarketExposureContracts: 100,
+      maxMarketExposureUsd: 50, // previously 100 contracts at ~$0.5
       concentrationWarningPct: 90,
       concentrationCriticalPctLive: 90,
     });

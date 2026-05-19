@@ -73,7 +73,7 @@ async function main() {
     softInventoryLimitPct: config.inventory.softLimitPct,
     reduceOnlyLimitPct: config.inventory.reduceOnlyLimitPct,
     hardInventoryLimitPct: config.inventory.hardLimitPct,
-    maxMarketExposureContracts: Math.max(1, config.inventory.maxMarketExposureUsd),
+    maxMarketExposureUsd: config.inventory.maxMarketExposureUsd,
     concentrationWarningPct: 90,
     concentrationCriticalPctLive: 90,
   });

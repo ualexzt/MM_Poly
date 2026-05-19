@@ -6,7 +6,7 @@ const config: StrategyRiskConfig = {
   softInventoryLimitPct: 25,
   reduceOnlyLimitPct: 70,
   hardInventoryLimitPct: 90,
-  maxMarketExposureContracts: 100,
+  maxMarketExposureUsd: 50, // previously 100 contracts at ~$0.5
   concentrationWarningPct: 90,
   concentrationCriticalPctLive: 90,
 };
@@ -67,7 +67,7 @@ describe('StrategyRiskManager', () => {
     expect(decision.allowBuy).toBe(true);
     expect(decision.allowSell).toBe(false);
     expect(decision.positionSide).toBe('SHORT');
-    expect(decision.inventoryUsagePct).toBeCloseTo(80);
+    expect(decision.inventoryUsagePct).toBeCloseTo(88.8);
     expect(decision.reasons).toContain('reduce_only_short_inventory');
   });
 
@@ -78,7 +78,7 @@ describe('StrategyRiskManager', () => {
       mode: 'paper',
       conditionId: 'market-1',
       tokenId: 'token-yes',
-      position: makePosition({ netSize: 75, avgCost: 0.40 }),
+      position: makePosition({ netSize: 80, avgCost: 0.40 }),
       book: makeBook(),
       currentFair: 0.45,
       primaryMarketQuoteSharePct: 50,
@@ -189,7 +189,7 @@ describe('StrategyRiskManager', () => {
       tokenId: 'token-yes',
       position: makePosition({ netSize: -90, avgCost: 0.62 }),
       book: makeBook(),
-      currentFair: 0.55,
+      currentFair: 0.50,
       primaryMarketQuoteSharePct: 50,
       hasActiveQuotes: true,
       isBookStale: false,
@@ -208,9 +208,9 @@ describe('StrategyRiskManager', () => {
       mode: 'paper',
       conditionId: 'market-1',
       tokenId: 'token-yes',
-      position: makePosition({ netSize: -90.01, avgCost: 0.62 }),
+      position: makePosition({ netSize: -91, avgCost: 0.62 }),
       book: makeBook(),
-      currentFair: 0.55,
+      currentFair: 0.50,
       primaryMarketQuoteSharePct: 50,
       hasActiveQuotes: true,
       isBookStale: false,
