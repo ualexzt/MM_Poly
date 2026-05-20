@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add risk visibility fields to PAPER Telegram reports so rebate dependency, top inventory markets, non-OK duration, and inventory trend are visible before live consideration.
+**Goal:** Add risk visibility fields to PAPER Telegram reports so rebate dependency, top inventory markets, non-OK duration, and risk trajectory are visible before live consideration.
 
 **Architecture:** Keep trading behavior unchanged. Add small reporting-only types and helpers in `src/reporting/telegram-risk-report.ts`, add stateful report diagnostics in `src/run-paper.ts`, and test the formatter and diagnostics through existing Jest test files. The formatter owns presentation and action wording; `run-paper.ts` owns current/previous snapshot state.
 
@@ -13,18 +13,18 @@
 ## File Structure
 
 - Modify `src/reporting/telegram-risk-report.ts`
-  - Extend `TelegramRiskReportInput.risk` with optional `topInventoryDecisions`, `timeInNonOkStatusMs`, and `inventoryTrend`.
-  - Add formatter helpers for ex-rebates PnL, top inventory markets, trend, duration fallback, and status-aware action text.
+  - Extend `TelegramRiskReportInput.risk` with optional `topInventoryDecisions`, `timeInNonOkStatusMs`, and `riskTrajectory`.
+  - Add formatter helpers for ex-rebates PnL, top inventory markets, risk trajectory, duration fallback, and status-aware action text.
   - Keep helpers pure and side-effect free.
 
 - Modify `src/run-paper.ts`
-  - Track previous report inventory usage and non-OK status start time inside `scheduleTelegramReports` closure.
+  - Track previous report inventory usage, status, reduce-only state, and reasons plus non-OK status start time inside `scheduleTelegramReports` closure.
   - Build top inventory decisions from `allDecisionsToReport`.
   - Pass diagnostics into `formatTelegramRiskReport`.
   - Do not change quote generation, risk limits, reduce-only logic, or execution.
 
 - Modify `tests/reporting/telegram-risk-report.test.ts`
-  - Add focused formatter tests for ex-rebates, top inventory markets, fallbacks, dynamic action, trend, and non-OK duration.
+  - Add focused formatter tests for ex-rebates, top inventory markets, fallbacks, dynamic action, risk trajectory, and non-OK duration.
 
 - Modify `tests/integration/risk-gated-paper-report.test.ts` if it asserts exact report content and needs updates for the new fields.
 
@@ -314,40 +314,56 @@ EOF
 
 ---
 
-### Task 3: Non-OK duration and inventory trend formatter
+### Task 3: Non-OK duration and risk trajectory formatter
 
 **Files:**
 - Modify: `tests/reporting/telegram-risk-report.test.ts`
 - Modify: `src/reporting/telegram-risk-report.ts`
 
-- [ ] **Step 1: Add failing formatter tests for duration and trend**
+- [ ] **Step 1: Add failing formatter tests for duration and risk trajectory**
 
 In `tests/reporting/telegram-risk-report.test.ts`, add these tests after the top inventory tests:
 
 ```ts
-test('renders non-OK duration and worsening inventory trend', () => {
+test('renders non-OK duration and worsening risk trajectory', () => {
   const base = makeInput();
   const text = formatTelegramRiskReport(makeInput({
     risk: {
       ...base.risk,
+      status: 'WARNING',
+      reasons: ['inventory_soft_limit_exceeded', 'reduce_only_long_inventory'],
+      reduceOnly: true,
       timeInNonOkStatusMs: 90 * 60 * 1000,
-      inventoryTrend: {
+      riskTrajectory: {
+        previousStatus: 'WATCH',
+        currentStatus: 'WARNING',
         previousUsagePct: 17.1,
-        currentUsagePct: 20.5,
-        direction: 'worsening',
+        currentUsagePct: 58.8,
+        usageDirection: 'worsening',
+        previousReduceOnly: false,
+        currentReduceOnly: true,
+        previousReasons: ['inventory_soft_limit_exceeded'],
+        currentReasons: ['inventory_soft_limit_exceeded', 'reduce_only_long_inventory'],
       },
     },
   }));
 
   expect(text).toContain('Time in Non-OK: 1h 30m');
-  expect(text).toContain('Inventory Trend: 17.10% → 20.50% worsening');
+  expect(text).toContain('Risk Trajectory');
+  expect(text).toContain('Status: WATCH → WARNING');
+  expect(text).toContain('Inventory Usage: 17.10% → 58.80% worsening');
+  expect(text).toContain('Reduce-only: OFF → ON');
+  expect(text).toContain('Reasons: inventory_soft_limit_exceeded → inventory_soft_limit_exceeded, reduce_only_long_inventory');
 });
 
-test('renders diagnostic fallbacks when duration and trend are unavailable', () => {
+test('renders diagnostic fallbacks when duration and trajectory are unavailable', () => {
   const text = formatTelegramRiskReport(makeInput());
 
   expect(text).toContain('Time in Non-OK: n/a');
-  expect(text).toContain('Inventory Trend: n/a');
+  expect(text).toContain('Status: n/a');
+  expect(text).toContain('Inventory Usage: n/a');
+  expect(text).toContain('Reduce-only: n/a');
+  expect(text).toContain('Reasons: n/a');
 });
 ```
 
@@ -359,19 +375,25 @@ Run:
 npm test -- tests/reporting/telegram-risk-report.test.ts --runInBand
 ```
 
-Expected: FAIL because duration/trend input fields and report lines do not exist yet.
+Expected: FAIL because duration/trajectory input fields and report lines do not exist yet.
 
 - [ ] **Step 3: Add report diagnostic types**
 
 In `src/reporting/telegram-risk-report.ts`, add this exported type after the imports:
 
 ```ts
-export type InventoryTrendDirection = 'improving' | 'worsening' | 'flat';
+export type RiskTrajectoryDirection = 'improving' | 'worsening' | 'flat';
 
-export interface InventoryTrendSnapshot {
+export interface RiskTrajectorySnapshot {
+  previousStatus: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL' | null;
+  currentStatus: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL' | null;
   previousUsagePct: number | null;
   currentUsagePct: number | null;
-  direction: InventoryTrendDirection | null;
+  usageDirection: RiskTrajectoryDirection | null;
+  previousReduceOnly: boolean | null;
+  currentReduceOnly: boolean | null;
+  previousReasons: string[] | null;
+  currentReasons: string[] | null;
 }
 ```
 
@@ -379,16 +401,25 @@ Add these optional fields to `TelegramRiskReportInput.risk` after `unrealizedToR
 
 ```ts
 timeInNonOkStatusMs?: number | null;
-inventoryTrend?: InventoryTrendSnapshot | null;
+riskTrajectory?: RiskTrajectorySnapshot | null;
 ```
 
-- [ ] **Step 4: Render duration and trend in Risk section**
+- [ ] **Step 4: Render duration and risk trajectory in Risk section**
 
 In the Risk section, after `Unrealized/Realized: ...`, add:
 
 ```ts
 Time in Non-OK: ${formatOptionalDuration(input.risk.timeInNonOkStatusMs ?? null)}
-Inventory Trend: ${formatInventoryTrend(input.risk.inventoryTrend ?? null)}
+```
+
+Then add a separate section after the risk lines:
+
+```ts
+lines.push('');
+lines.push('📉 Risk Trajectory');
+for (const line of formatRiskTrajectory(input.risk.riskTrajectory ?? null)) {
+  lines.push(line);
+}
 ```
 
 Add these helpers above `formatWorstCase`:
@@ -398,17 +429,48 @@ function formatOptionalDuration(ms: number | null): string {
   return ms === null ? 'n/a' : formatDuration(ms);
 }
 
-function formatInventoryTrend(trend: InventoryTrendSnapshot | null): string {
-  if (
-    trend === null ||
-    trend.previousUsagePct === null ||
-    trend.currentUsagePct === null ||
-    trend.direction === null
-  ) {
-    return 'n/a';
+function formatReduceOnlyTransition(value: boolean | null): string {
+  if (value === null) return 'n/a';
+  return value ? 'ON' : 'OFF';
+}
+
+function formatReasonsTransition(reasons: string[] | null): string {
+  if (reasons === null) return 'n/a';
+  return reasons.length > 0 ? reasons.join(', ') : 'none';
+}
+
+function formatRiskTrajectory(trajectory: RiskTrajectorySnapshot | null): string[] {
+  if (trajectory === null) {
+    return [
+      'Status: n/a',
+      'Inventory Usage: n/a',
+      'Reduce-only: n/a',
+      'Reasons: n/a',
+    ];
   }
 
-  return `${formatNullablePct(trend.previousUsagePct)} → ${formatNullablePct(trend.currentUsagePct)} ${trend.direction}`;
+  const status = trajectory.previousStatus === null || trajectory.currentStatus === null
+    ? 'n/a'
+    : `${trajectory.previousStatus} → ${trajectory.currentStatus}`;
+
+  const usage = trajectory.previousUsagePct === null || trajectory.currentUsagePct === null || trajectory.usageDirection === null
+    ? 'n/a'
+    : `${formatNullablePct(trajectory.previousUsagePct)} → ${formatNullablePct(trajectory.currentUsagePct)} ${trajectory.usageDirection}`;
+
+  const reduceOnly = trajectory.previousReduceOnly === null || trajectory.currentReduceOnly === null
+    ? 'n/a'
+    : `${formatReduceOnlyTransition(trajectory.previousReduceOnly)} → ${formatReduceOnlyTransition(trajectory.currentReduceOnly)}`;
+
+  const reasons = trajectory.previousReasons === null || trajectory.currentReasons === null
+    ? 'n/a'
+    : `${formatReasonsTransition(trajectory.previousReasons)} → ${formatReasonsTransition(trajectory.currentReasons)}`;
+
+  return [
+    `Status: ${status}`,
+    `Inventory Usage: ${usage}`,
+    `Reduce-only: ${reduceOnly}`,
+    `Reasons: ${reasons}`,
+  ];
 }
 ```
 
@@ -429,9 +491,9 @@ Run:
 ```bash
 git add src/reporting/telegram-risk-report.ts tests/reporting/telegram-risk-report.test.ts
 git commit -m "$(cat <<'EOF'
-feat(reporting): show risk persistence diagnostics
+feat(reporting): show risk trajectory diagnostics
 
-Add non-OK duration and inventory trend fields to Telegram reports so WATCH states can be assessed over time.
+Add non-OK duration and risk trajectory fields to Telegram reports so WATCH/WARNING states can be assessed over time.
 
 Co-Authored-By: OpenClaude (gpt-5.5) <openclaude@gitlawb.com>
 EOF
@@ -448,7 +510,7 @@ EOF
 
 - [ ] **Step 1: Add formatter test for fields passed by runtime shape**
 
-In `tests/reporting/telegram-risk-report.test.ts`, add this test after duration/trend tests to lock the expected runtime payload shape:
+In `tests/reporting/telegram-risk-report.test.ts`, add this test after duration/trajectory tests to lock the expected runtime payload shape:
 
 ```ts
 test('accepts runtime-provided top inventory diagnostics', () => {
@@ -458,17 +520,23 @@ test('accepts runtime-provided top inventory diagnostics', () => {
       ...base.risk,
       topInventoryDecisions: [base.risk.topMarketDecision!],
       timeInNonOkStatusMs: 5 * 60 * 1000,
-      inventoryTrend: {
+      riskTrajectory: {
+        previousStatus: 'WARNING',
+        currentStatus: 'WARNING',
         previousUsagePct: 80,
         currentUsagePct: 80,
-        direction: 'flat',
+        usageDirection: 'flat',
+        previousReduceOnly: true,
+        currentReduceOnly: true,
+        previousReasons: ['inventory_soft_limit_exceeded'],
+        currentReasons: ['inventory_soft_limit_exceeded'],
       },
     },
   }));
 
   expect(text).toContain('Top Inventory Markets');
   expect(text).toContain('Time in Non-OK: 5m');
-  expect(text).toContain('Inventory Trend: 80.00% → 80.00% flat');
+  expect(text).toContain('Inventory Usage: 80.00% → 80.00% flat');
 });
 ```
 
@@ -482,7 +550,7 @@ npm run build
 
 Expected: It may PASS because the new report fields are optional. Continue to Step 3 either way.
 
-- [ ] **Step 3: Import inventory trend type in runtime**
+- [ ] **Step 3: Import risk trajectory type in runtime**
 
 In `src/run-paper.ts`, update the existing import:
 
@@ -493,7 +561,7 @@ import { formatTelegramRiskReport } from './reporting/telegram-risk-report';
 to:
 
 ```ts
-import { formatTelegramRiskReport, InventoryTrendSnapshot } from './reporting/telegram-risk-report';
+import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/telegram-risk-report';
 ```
 
 - [ ] **Step 4: Add report diagnostic state inside `scheduleTelegramReports`**
@@ -502,10 +570,15 @@ Near the top of `scheduleTelegramReports`, before `function scheduleReport(hourU
 
 ```ts
   let nonOkStatusStartedAtMs: number | null = null;
-  let previousTopInventoryUsagePct: number | null = null;
+  let previousRiskSnapshot: {
+    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    usagePct: number | null;
+    reduceOnly: boolean;
+    reasons: string[];
+  } | null = null;
 ```
 
-- [ ] **Step 5: Add top inventory and trend helpers inside `scheduleTelegramReports`**
+- [ ] **Step 5: Add top inventory and risk trajectory helpers inside `scheduleTelegramReports`**
 
 Inside `scheduleTelegramReports`, before `function scheduleReport(hourUtc: number)`, add:
 
@@ -522,35 +595,43 @@ Inside `scheduleTelegramReports`, before `function scheduleReport(hourUtc: numbe
       .slice(0, 5);
   }
 
-  function buildInventoryTrend(currentUsagePct: number | null): InventoryTrendSnapshot {
-    if (previousTopInventoryUsagePct === null || currentUsagePct === null) {
+  function buildRiskTrajectory(snapshot: {
+    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    usagePct: number | null;
+    reduceOnly: boolean;
+    reasons: string[];
+  }): RiskTrajectorySnapshot {
+    if (previousRiskSnapshot === null) {
       return {
-        previousUsagePct: previousTopInventoryUsagePct,
-        currentUsagePct,
-        direction: null,
+        previousStatus: null,
+        currentStatus: snapshot.status,
+        previousUsagePct: null,
+        currentUsagePct: snapshot.usagePct,
+        usageDirection: null,
+        previousReduceOnly: null,
+        currentReduceOnly: snapshot.reduceOnly,
+        previousReasons: null,
+        currentReasons: snapshot.reasons,
       };
     }
 
-    if (currentUsagePct < previousTopInventoryUsagePct) {
-      return {
-        previousUsagePct: previousTopInventoryUsagePct,
-        currentUsagePct,
-        direction: 'improving',
-      };
-    }
-
-    if (currentUsagePct > previousTopInventoryUsagePct) {
-      return {
-        previousUsagePct: previousTopInventoryUsagePct,
-        currentUsagePct,
-        direction: 'worsening',
-      };
+    let usageDirection: RiskTrajectorySnapshot['usageDirection'] = null;
+    if (previousRiskSnapshot.usagePct !== null && snapshot.usagePct !== null) {
+      if (snapshot.usagePct < previousRiskSnapshot.usagePct) usageDirection = 'improving';
+      else if (snapshot.usagePct > previousRiskSnapshot.usagePct) usageDirection = 'worsening';
+      else usageDirection = 'flat';
     }
 
     return {
-      previousUsagePct: previousTopInventoryUsagePct,
-      currentUsagePct,
-      direction: 'flat',
+      previousStatus: previousRiskSnapshot.status,
+      currentStatus: snapshot.status,
+      previousUsagePct: previousRiskSnapshot.usagePct,
+      currentUsagePct: snapshot.usagePct,
+      usageDirection,
+      previousReduceOnly: previousRiskSnapshot.reduceOnly,
+      currentReduceOnly: snapshot.reduceOnly,
+      previousReasons: previousRiskSnapshot.reasons,
+      currentReasons: snapshot.reasons,
     };
   }
 ```
@@ -571,8 +652,14 @@ In `src/run-paper.ts`, after `const globalRiskStatus = maxRiskStatus(allDecision
       const timeInNonOkStatusMs = nonOkStatusStartedAtMs === null ? null : nowMs - nonOkStatusStartedAtMs;
       const topInventoryDecisions = getTopInventoryDecisions(allDecisionsToReport);
       const currentTopInventoryUsagePct = topInventoryDecisions[0]?.inventoryUsagePct ?? null;
-      const inventoryTrend = buildInventoryTrend(currentTopInventoryUsagePct);
-      previousTopInventoryUsagePct = currentTopInventoryUsagePct;
+      const currentRiskSnapshot = {
+        status: globalRiskStatus,
+        usagePct: currentTopInventoryUsagePct,
+        reduceOnly: allDecisionsToReport.some(decision => decision.reduceOnly),
+        reasons: Array.from(new Set(allDecisionsToReport.flatMap(decision => decision.reasons))).sort(),
+      };
+      const riskTrajectory = buildRiskTrajectory(currentRiskSnapshot);
+      previousRiskSnapshot = currentRiskSnapshot;
 ```
 
 - [ ] **Step 7: Pass diagnostics into formatter**
@@ -582,7 +669,7 @@ In the `risk` object passed to `formatTelegramRiskReport`, after `unrealizedToRe
 ```ts
           topInventoryDecisions,
           timeInNonOkStatusMs,
-          inventoryTrend,
+          riskTrajectory,
 ```
 
 - [ ] **Step 8: Run tests and build**
@@ -605,7 +692,7 @@ git add src/run-paper.ts tests/reporting/telegram-risk-report.test.ts
 git commit -m "$(cat <<'EOF'
 feat(reporting): wire paper risk diagnostics
 
-Track top inventory usage and non-OK status duration across Telegram report intervals without changing trading behavior.
+Track top inventory usage, risk-state transitions, reduce-only changes, and non-OK status duration across Telegram report intervals without changing trading behavior.
 
 Co-Authored-By: OpenClaude (gpt-5.5) <openclaude@gitlawb.com>
 EOF
@@ -689,8 +776,8 @@ If no files changed in Step 1, skip this commit.
   - Top inventory markets are implemented in Task 2 and wired in Task 4.
   - Dynamic action is implemented in Task 1.
   - Time in non-OK status is implemented in Tasks 3 and 4.
-  - Inventory trend is implemented in Tasks 3 and 4.
+  - Risk trajectory is implemented in Tasks 3 and 4.
   - Safe fallbacks are covered in Tasks 2 and 3.
   - Regression verification is covered in Task 5.
 - Placeholder scan: no `TBD`, `TODO`, or unspecified edge-case steps remain.
-- Type consistency: `InventoryTrendSnapshot`, `topInventoryDecisions`, `timeInNonOkStatusMs`, and `inventoryTrend` are defined before use and remain optional on report input.
+- Type consistency: `RiskTrajectorySnapshot`, `topInventoryDecisions`, `timeInNonOkStatusMs`, and `riskTrajectory` are defined before use and remain optional on report input.

@@ -11,7 +11,7 @@ In scope:
 - Add a top inventory markets section to show the highest-risk open positions.
 - Replace the static action text with status-aware guidance.
 - Add diagnostics for time spent in non-OK risk status.
-- Add an inventory trend indicator comparing current inventory usage with the previous report interval.
+- Add a risk trajectory indicator comparing current status, inventory usage, reduce-only state, and reasons with the previous report interval.
 - Add tests for formatting, risk-state tracking, and safe fallback behavior.
 
 Out of scope:
@@ -61,20 +61,27 @@ Risk reporting should track how long the strategy has continuously been in a non
 
 The Telegram report should render this value when available. If there is not enough history, it should render `n/a`.
 
-### Inventory trend
+### Risk trajectory
 
-The report should compare current top inventory usage with the previous report interval. It should render:
+The report should compare the current risk state with the previous report interval. It should render:
+
+- Status transition, for example `WATCH → WARNING`.
+- Inventory usage transition, for example `17.10% → 58.80% worsening`.
+- Reduce-only transition, for example `OFF → ON`.
+- Risk reasons transition, for example `inventory_soft_limit_exceeded → inventory_soft_limit_exceeded, reduce_only_long_inventory`.
+
+Inventory usage direction should be:
 
 - `improving` when usage decreases.
 - `worsening` when usage increases.
 - `flat` when unchanged.
 - `n/a` when no previous value exists.
 
-The displayed format should show previous and current values when both are available, for example: `17.10% → 14.80% improving`.
+The first report after startup has no previous interval, so each transition line should render `n/a` rather than implying improvement or deterioration.
 
 ## Data Flow
 
-The risk/reporting layer should collect current per-market risk decisions, derive top inventory markets, compare aggregate top inventory usage with the previous report snapshot, and pass the resulting diagnostics into the Telegram formatter.
+The risk/reporting layer should collect current per-market risk decisions, derive top inventory markets, compare aggregate top inventory usage, global risk status, reduce-only state, and risk reasons with the previous report snapshot, and pass the resulting diagnostics into the Telegram formatter.
 
 The formatter should remain mostly presentational: it should format fields and choose action text, but it should not own trading decisions.
 
@@ -83,7 +90,7 @@ The formatter should remain mostly presentational: it should format fields and c
 - Missing bid/ask exit PnL renders as `not available`.
 - Missing fair, bid, ask, or inventory usage renders as `n/a`.
 - Empty top inventory list renders as `none`.
-- Missing previous trend snapshot renders as `n/a`.
+- Missing previous risk trajectory snapshot renders each transition line as `n/a`.
 - Unknown or empty risk reasons should not break report generation.
 
 ## Tests
@@ -99,8 +106,9 @@ The formatter should remain mostly presentational: it should format fields and c
 
 - `timeInNonOkStatus` increases while status remains non-OK.
 - `timeInNonOkStatus` resets after returning to `OK`.
-- `inventoryTrend` renders `n/a` without previous data.
-- `inventoryTrend` identifies improving, worsening, and flat cases.
+- `riskTrajectory` renders `n/a` without previous data.
+- `riskTrajectory` identifies improving, worsening, and flat inventory usage cases.
+- `riskTrajectory` shows status, reduce-only, and reason transitions.
 
 ### Regression tests
 
@@ -112,6 +120,6 @@ The formatter should remain mostly presentational: it should format fields and c
 - PAPER Telegram report clearly shows PnL excluding rebates.
 - Report shows top risk-bearing open positions, not only the main quoted market.
 - Action guidance is status-aware instead of generic.
-- Report shows whether WATCH conditions are improving or worsening over time.
+- Report shows whether WATCH/WARNING conditions are improving or worsening over time through risk trajectory transitions.
 - All additions are safe when optional data is missing.
 - No quote generation, risk limit, reduce-only, or execution behavior changes.
