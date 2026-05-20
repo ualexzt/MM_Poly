@@ -97,7 +97,7 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Quote Share: 7,930 / 7,934');
     expect(text).not.toContain('Total Trades');
     expect(text).toContain('Estimated Total ex Rebates: +$15.91');
-    expect(text).toContain('Inspect top inventory markets and reduce exposure before considering LIVE.');
+    expect(text).toContain('Inspect top inventory markets and reduce exposure immediately.');
   });
 
   test('handles null top market decision', () => {
@@ -129,6 +129,44 @@ describe('formatTelegramRiskReport', () => {
     expect(text).not.toContain('A < B & C > D');
   });
 
+  test('uses OK action for paper mode with no issues', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...makeInput().risk,
+        status: 'OK',
+        reasons: [],
+      },
+    }));
+
+    expect(text).toContain('Continue PAPER soak and monitor normal risk metrics.');
+  });
+
+  test('uses OK action for small_live mode', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      mode: 'small_live',
+      risk: {
+        ...makeInput().risk,
+        status: 'OK',
+        reasons: [],
+      },
+    }));
+
+    expect(text).toContain('Risk status OK. Monitor normal risk metrics.');
+  });
+
+  test('uses disabled action for disabled mode', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      mode: 'disabled',
+      risk: {
+        ...makeInput().risk,
+        status: 'OK',
+        reasons: [],
+      },
+    }));
+
+    expect(text).toContain('Bot disabled. Review configuration before enabling trading.');
+  });
+
   test('uses inventory WATCH action when soft inventory limit is exceeded', () => {
     const text = formatTelegramRiskReport(makeInput({
       risk: {
@@ -139,6 +177,31 @@ describe('formatTelegramRiskReport', () => {
     }));
 
     expect(text).toContain('Stay PAPER and monitor whether inventory decays back below soft limit.');
+  });
+
+  test('uses generic WATCH action for non-inventory reasons', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...makeInput().risk,
+        status: 'WATCH',
+        reasons: ['stale_book_guard_active'],
+      },
+    }));
+
+    expect(text).toContain('Stay PAPER and inspect listed reasons before considering LIVE.');
+  });
+
+  test('uses WARNING action for small_live mode', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      mode: 'small_live',
+      risk: {
+        ...makeInput().risk,
+        status: 'WARNING',
+        reasons: ['single_market_concentration_above_90_pct'],
+      },
+    }));
+
+    expect(text).toContain('Inspect top inventory markets and reduce exposure immediately.');
   });
 
   test('renders runtime-provided top inventory markets', () => {
@@ -208,7 +271,7 @@ describe('formatTelegramRiskReport', () => {
   test('renders top inventory fallback when no inventory decisions are provided', () => {
     const text = formatTelegramRiskReport(makeInput());
     expect(text).toContain('Top Inventory Markets');
-    expect(text).toContain('n/a');
+    expect(text).toMatch(/Top Inventory Markets[\s\S]*n\/a/);
   });
 
   test('renders non-OK duration and worsening risk trajectory', () => {

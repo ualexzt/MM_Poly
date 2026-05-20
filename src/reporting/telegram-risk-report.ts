@@ -199,13 +199,7 @@ function formatQuoteShare(primaryMarketQuoteTraces: number, quoteTraces: number)
 }
 
 function formatOptionalDuration(ms: number | null): string {
-  if (ms === null) return 'n/a';
-  const totalMinutes = Math.floor(ms / (60 * 1000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+  return ms === null ? 'n/a' : formatDuration(ms);
 }
 
 function formatReduceOnlyTransition(value: boolean | null): string {
@@ -280,19 +274,25 @@ function formatAction(mode: StrategyMode, status: RiskStatus, reasons: string[])
   if (mode === 'disabled') return 'Bot disabled. Review configuration before enabling trading.';
 
   if (status === 'OK') {
-    return 'Continue PAPER soak and monitor normal risk metrics.';
+    return mode === 'paper'
+      ? 'Continue PAPER soak and monitor normal risk metrics.'
+      : 'Risk status OK. Monitor normal risk metrics.';
   }
 
   if (status === 'WATCH' && reasons.includes('inventory_soft_limit_exceeded')) {
-    return 'Stay PAPER and monitor whether inventory decays back below soft limit.';
+    return mode === 'paper'
+      ? 'Stay PAPER and monitor whether inventory decays back below soft limit.'
+      : 'Inventory soft limit exceeded. Monitor whether inventory decays back below soft limit.';
   }
 
   if (status === 'WATCH') {
-    return 'Stay PAPER and inspect listed reasons before considering LIVE.';
+    return mode === 'paper'
+      ? 'Stay PAPER and inspect listed reasons before considering LIVE.'
+      : 'WATCH status active. Inspect listed reasons.';
   }
 
   if (status === 'WARNING') {
-    return 'Inspect top inventory markets and reduce exposure before considering LIVE.';
+    return 'Inspect top inventory markets and reduce exposure immediately.';
   }
 
   return 'Review cancel and kill-switch path before continuing.';

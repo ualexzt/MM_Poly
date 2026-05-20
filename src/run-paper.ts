@@ -14,7 +14,7 @@ import { filterEligibleMarkets } from './strategy/market-selector';
 import { generateQuoteCandidate } from './engines/quote-engine';
 import { createTrace } from './accounting/decision-trace';
 import { isBookStale } from './risk/stale-book-guard';
-import { MarketRiskDecision, maxRiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
+import { MarketRiskDecision, maxRiskStatus, RiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
 import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/telegram-risk-report';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
@@ -358,7 +358,7 @@ async function main() {
   // Report diagnostics — stateful tracking across report intervals
   let nonOkStatusStartedAtMs: number | null = null;
   let previousRiskSnapshot: {
-    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    status: RiskStatus;
     usagePct: number | null;
     reduceOnly: boolean;
     reasons: string[];
@@ -377,7 +377,7 @@ async function main() {
   }
 
   function buildRiskTrajectory(snapshot: {
-    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    status: RiskStatus;
     usagePct: number | null;
     reduceOnly: boolean;
     reasons: string[];
