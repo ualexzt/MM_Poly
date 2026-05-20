@@ -332,7 +332,7 @@ test('renders non-OK duration and worsening risk trajectory', () => {
       ...base.risk,
       status: 'WARNING',
       reasons: ['inventory_soft_limit_exceeded', 'reduce_only_long_inventory'],
-      reduceOnly: true,
+      reduceOnlyActive: true,
       timeInNonOkStatusMs: 90 * 60 * 1000,
       riskTrajectory: {
         previousStatus: 'WATCH',
@@ -406,20 +406,17 @@ riskTrajectory?: RiskTrajectorySnapshot | null;
 
 - [ ] **Step 4: Render duration and risk trajectory in Risk section**
 
-In the Risk section, after `Unrealized/Realized: ...`, add:
+In the Risk section, after `Unrealized/Realized: ...`, add the duration line inside the existing template literal:
 
 ```ts
 Time in Non-OK: ${formatOptionalDuration(input.risk.timeInNonOkStatusMs ?? null)}
 ```
 
-Then add a separate section after the risk lines:
+Add the risk trajectory section inside the same template literal after the Risk block and before Main Market:
 
 ```ts
-lines.push('');
-lines.push('📉 Risk Trajectory');
-for (const line of formatRiskTrajectory(input.risk.riskTrajectory ?? null)) {
-  lines.push(line);
-}
+📉 <b>Risk Trajectory</b>
+${formatRiskTrajectory(input.risk.riskTrajectory ?? null).join('\n')}
 ```
 
 Add these helpers above `formatWorstCase`:
