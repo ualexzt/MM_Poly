@@ -251,4 +251,30 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Reduce-only: n/a');
     expect(text).toContain('Reasons: n/a');
   });
+
+  test('accepts runtime-provided top inventory diagnostics', () => {
+    const base = makeInput();
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...base.risk,
+        topInventoryDecisions: [base.risk.topMarketDecision!],
+        timeInNonOkStatusMs: 5 * 60 * 1000,
+        riskTrajectory: {
+          previousStatus: 'WARNING',
+          currentStatus: 'WARNING',
+          previousUsagePct: 80,
+          currentUsagePct: 80,
+          usageDirection: 'flat',
+          previousReduceOnly: true,
+          currentReduceOnly: true,
+          previousReasons: ['inventory_soft_limit_exceeded'],
+          currentReasons: ['inventory_soft_limit_exceeded'],
+        },
+      },
+    }));
+
+    expect(text).toContain('Top Inventory Markets');
+    expect(text).toContain('Time in Non-OK: 5m');
+    expect(text).toContain('Inventory Usage: 80.00% → 80.00% flat');
+  });
 });

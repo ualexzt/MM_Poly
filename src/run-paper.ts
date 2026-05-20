@@ -15,7 +15,7 @@ import { generateQuoteCandidate } from './engines/quote-engine';
 import { createTrace } from './accounting/decision-trace';
 import { isBookStale } from './risk/stale-book-guard';
 import { MarketRiskDecision, maxRiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
-import { formatTelegramRiskReport } from './reporting/telegram-risk-report';
+import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/telegram-risk-report';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
@@ -355,6 +355,67 @@ async function main() {
 
   ws.connect(tokenIds);
 
+  // Report diagnostics — stateful tracking across report intervals
+  let nonOkStatusStartedAtMs: number | null = null;
+  let previousRiskSnapshot: {
+    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    usagePct: number | null;
+    reduceOnly: boolean;
+    reasons: string[];
+  } | null = null;
+
+  function getTopInventoryDecisions(decisions: MarketRiskDecision[]): MarketRiskDecision[] {
+    return [...decisions]
+      .filter(decision => decision.positionSide !== 'FLAT' && decision.netPosition !== 0)
+      .sort((a, b) => {
+        const usageA = a.inventoryUsagePct ?? -1;
+        const usageB = b.inventoryUsagePct ?? -1;
+        if (usageA !== usageB) return usageB - usageA;
+        return Math.abs(b.netPosition) - Math.abs(a.netPosition);
+      })
+      .slice(0, 5);
+  }
+
+  function buildRiskTrajectory(snapshot: {
+    status: 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
+    usagePct: number | null;
+    reduceOnly: boolean;
+    reasons: string[];
+  }): RiskTrajectorySnapshot {
+    if (previousRiskSnapshot === null) {
+      return {
+        previousStatus: null,
+        currentStatus: snapshot.status,
+        previousUsagePct: null,
+        currentUsagePct: snapshot.usagePct,
+        usageDirection: null,
+        previousReduceOnly: null,
+        currentReduceOnly: snapshot.reduceOnly,
+        previousReasons: null,
+        currentReasons: snapshot.reasons,
+      };
+    }
+
+    let usageDirection: RiskTrajectorySnapshot['usageDirection'] = null;
+    if (previousRiskSnapshot.usagePct !== null && snapshot.usagePct !== null) {
+      if (snapshot.usagePct < previousRiskSnapshot.usagePct) usageDirection = 'improving';
+      else if (snapshot.usagePct > previousRiskSnapshot.usagePct) usageDirection = 'worsening';
+      else usageDirection = 'flat';
+    }
+
+    return {
+      previousStatus: previousRiskSnapshot.status,
+      currentStatus: snapshot.status,
+      previousUsagePct: previousRiskSnapshot.usagePct,
+      currentUsagePct: snapshot.usagePct,
+      usageDirection,
+      previousReduceOnly: previousRiskSnapshot.reduceOnly,
+      currentReduceOnly: snapshot.reduceOnly,
+      previousReasons: previousRiskSnapshot.reasons,
+      currentReasons: snapshot.reasons,
+    };
+  }
+
   // Report scheduler — 08:00 and 20:00 Kyiv (05:00 & 17:00 UTC)
   function scheduleReport(hourUtc: number) {
     const now = new Date();
@@ -401,6 +462,26 @@ async function main() {
       const unrealizedToRealizedRatio = realizedAbs > 0 ? Math.abs(unrealizedFairBased) / realizedAbs : null;
       const marketTitleByConditionId = new Map(markets.map(m => [m.conditionId, m.question ?? m.conditionId]));
 
+      // Update non-OK status duration tracking
+      if (globalRiskStatus === 'OK') {
+        nonOkStatusStartedAtMs = null;
+      } else if (nonOkStatusStartedAtMs === null) {
+        nonOkStatusStartedAtMs = nowMs;
+      }
+
+      // Build report diagnostics
+      const timeInNonOkStatusMs = nonOkStatusStartedAtMs === null ? null : nowMs - nonOkStatusStartedAtMs;
+      const topInventoryDecisions = getTopInventoryDecisions(allDecisionsToReport);
+      const currentTopInventoryUsagePct = topInventoryDecisions[0]?.inventoryUsagePct ?? null;
+      const currentRiskSnapshot = {
+        status: globalRiskStatus,
+        usagePct: currentTopInventoryUsagePct,
+        reduceOnly: allDecisionsToReport.some(d => d.reduceOnly),
+        reasons: Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons))).sort(),
+      };
+      const riskTrajectory = buildRiskTrajectory(currentRiskSnapshot);
+      previousRiskSnapshot = currentRiskSnapshot;
+
       const text = formatTelegramRiskReport({
         mode: env.mode,
         startedAt,
@@ -423,6 +504,9 @@ async function main() {
           killSwitchActive: false,
           openPositions: openPositionsCount,
           topMarketDecision: topDecision,
+          topInventoryDecisions,
+          timeInNonOkStatusMs,
+          riskTrajectory,
           singleMarketConcentrationPct: activity.primaryMarketQuoteSharePct,
           unrealizedToRealizedRatio,
         },
