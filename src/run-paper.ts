@@ -202,22 +202,32 @@ async function main() {
     // Always simulate fills if a trade price came through WS
     // We do NOT cancel orders before fill check — they sit in the book like real orders
     if (tradePrice !== undefined) {
-      const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: 3 });
+      // Derive realistic trade size from quote config instead of hardcoded 3
+      const tradeSize = Math.max(1, Math.round(config.size.baseOrderSizeUsd / Math.max(tradePrice, 0.001)));
+      const fills = paperEngine.onTrade({ tokenId: market.yesTokenId, price: tradePrice, size: tradeSize });
       const openOrders = paperEngine.getOpenOrders();
       for (const fill of fills) {
         const order = openOrders.find(o => o.id === fill.orderId);
         // Skip unrealistic fills (price too far from our quote — means we weren't at the top of book)
-        if (order && Math.abs(fill.filledPrice - order.price) > 0.02) {
+        // Threshold: 10% of order price, minimum 2 cents
+        const maxDiff = Math.max(0.02, (order?.price ?? 0) * 0.10);
+        if (order && Math.abs(fill.filledPrice - order.price) > maxDiff) {
           continue;
         }
+        const posBefore = pnlTracker.getPosition(fill.tokenId);
+        const prevRealized = posBefore?.realizedPnl ?? 0;
         pnlTracker.onFill(fill, yesFair.fairPrice);
+        const posAfter = pnlTracker.getPosition(fill.tokenId);
+        const tradePnl = (posAfter?.realizedPnl ?? 0) - prevRealized;
         activityTracker.recordFill(market.conditionId, fill);
         logger.info('Paper fill', {
+          conditionId: market.conditionId,
+          tokenId: fill.tokenId,
           side: fill.side,
           price: fill.filledPrice,
           size: fill.filledSize,
-          remaining: fill.remainingSize,
-          pnl: pnlTracker.getPosition(fill.tokenId)?.realizedPnl?.toFixed(2)
+          tradePnl: tradePnl.toFixed(4),
+          cumulativePnl: posAfter?.realizedPnl?.toFixed(2)
         });
       }
     }
