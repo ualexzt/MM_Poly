@@ -55,6 +55,7 @@ Realized Total: ${formatSignedUsd(input.pnl.realizedCumulative)}
 Unrealized: ${formatSignedUsd(input.pnl.unrealizedFairBased)}
 Est. Rebates: ${formatSignedUsd(input.pnl.estimatedMakerRebate)}
 Estimated Total: ${formatSignedUsd(input.pnl.estimatedTotalPnl)}
+Estimated Total ex Rebates: ${formatSignedUsd(input.pnl.realizedCumulative + input.pnl.unrealizedFairBased)}
 Valuation: ${formatValuationMode(input.pnl.valuationMode)}
 
 📈 <b>Activity</b>
@@ -86,7 +87,7 @@ ${escapeHtml(marketTitle)}
 Quote Share: ${quoteShare}
 
 🧭 <b>Action</b>
-${formatAction(input.mode)}
+${formatAction(input.mode, input.risk.status, input.risk.reasons)}
   `.trim();
 }
 
@@ -182,12 +183,26 @@ function formatWorstCase(top: MarketRiskDecision | null): string {
   return `Worst Case to YES=0.00: ${top.worstCaseLossToZero !== null ? `-${formatUsd(Math.abs(top.worstCaseLossToZero))}` : 'n/a'}`;
 }
 
-function formatAction(mode: StrategyMode): string {
-  if (mode === 'paper') {
-    return 'Stay PAPER. Before LIVE: inventory cap, reduce-only, bid/ask exit valuation, and concentration limits must stay enabled.';
-  }
+function formatAction(mode: StrategyMode, status: RiskStatus, reasons: string[]): string {
   if (mode === 'disabled') return 'Bot disabled. Review configuration before enabling trading.';
-  return 'Monitor risk controls before increasing exposure.';
+
+  if (status === 'OK') {
+    return 'Continue PAPER soak and monitor normal risk metrics.';
+  }
+
+  if (status === 'WATCH' && reasons.includes('inventory_soft_limit_exceeded')) {
+    return 'Stay PAPER and monitor whether inventory decays back below soft limit.';
+  }
+
+  if (status === 'WATCH') {
+    return 'Stay PAPER and inspect listed reasons before considering LIVE.';
+  }
+
+  if (status === 'WARNING') {
+    return 'Inspect top inventory markets and reduce exposure before considering LIVE.';
+  }
+
+  return 'Review cancel and kill-switch path before continuing.';
 }
 
 function escapeHtml(value: string): string {

@@ -96,6 +96,8 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Worst Case to YES=1.00: -$63.31');
     expect(text).toContain('Quote Share: 7,930 / 7,934');
     expect(text).not.toContain('Total Trades');
+    expect(text).toContain('Estimated Total ex Rebates: +$15.91');
+    expect(text).toContain('Inspect top inventory markets and reduce exposure before considering LIVE.');
   });
 
   test('handles null top market decision', () => {
@@ -125,5 +127,17 @@ describe('formatTelegramRiskReport', () => {
 
     expect(text).toContain('A &lt; B &amp; C &gt; D');
     expect(text).not.toContain('A < B & C > D');
+  });
+
+  test('uses inventory WATCH action when soft inventory limit is exceeded', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...makeInput().risk,
+        status: 'WATCH',
+        reasons: ['inventory_soft_limit_exceeded'],
+      },
+    }));
+
+    expect(text).toContain('Stay PAPER and monitor whether inventory decays back below soft limit.');
   });
 });
