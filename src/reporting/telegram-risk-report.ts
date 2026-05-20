@@ -23,6 +23,7 @@ export interface TelegramRiskReportInput {
     killSwitchActive: boolean;
     openPositions: number;
     topMarketDecision: MarketRiskDecision | null;
+    topInventoryDecisions?: MarketRiskDecision[];
     singleMarketConcentrationPct: number | null;
     unrealizedToRealizedRatio: number | null;
   };
@@ -81,6 +82,9 @@ Unrealized/Realized: ${input.risk.unrealizedToRealizedRatio !== null ? `${input.
 ${worstCase}
 Kill Switch: ${input.risk.killSwitchActive ? 'ON' : 'OFF'}
 Exit at Bid/Ask: ${top?.exitPnlAtBestBidAsk !== null && top?.exitPnlAtBestBidAsk !== undefined ? formatSignedUsd(top.exitPnlAtBestBidAsk) : 'not available'}
+
+📊 <b>Top Inventory Markets</b>
+${formatTopInventoryMarkets(input.risk.topInventoryDecisions ?? null, input.marketTitleByConditionId)}
 
 🎯 <b>Main Market</b>
 ${escapeHtml(marketTitle)}
@@ -171,6 +175,20 @@ function formatNullablePct(value: number | null): string {
 function formatQuoteShare(primaryMarketQuoteTraces: number, quoteTraces: number): string {
   if (quoteTraces <= 0) return 'n/a';
   return `${formatInteger(primaryMarketQuoteTraces)} / ${formatInteger(quoteTraces)}`;
+}
+
+function formatTopInventoryMarkets(decisions: MarketRiskDecision[] | null, titleMap: Map<string, string>): string {
+  if (!decisions || decisions.length === 0) return 'n/a';
+
+  return decisions
+    .map((decision, index) => {
+      const title = titleMap.get(decision.conditionId) ?? decision.conditionId;
+      const position = formatPosition(decision);
+      const usage = formatNullablePct(decision.inventoryUsagePct);
+      const exitPnl = decision.exitPnlAtBestBidAsk !== null ? formatSignedUsd(decision.exitPnlAtBestBidAsk) : 'n/a';
+      return `${index + 1}. ${escapeHtml(title)} — ${position} — Inventory Usage: ${usage} — Exit at Bid/Ask: ${exitPnl}`;
+    })
+    .join('\n');
 }
 
 function formatWorstCase(top: MarketRiskDecision | null): string {

@@ -140,4 +140,74 @@ describe('formatTelegramRiskReport', () => {
 
     expect(text).toContain('Stay PAPER and monitor whether inventory decays back below soft limit.');
   });
+
+  test('renders runtime-provided top inventory markets', () => {
+    const base = makeInput();
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...base.risk,
+        topInventoryDecisions: [
+          {
+            conditionId: 'market-2',
+            tokenId: 'token-yes-2',
+            riskStatus: 'OK',
+            reasons: [],
+            reduceOnly: false,
+            allowBuy: true,
+            allowSell: true,
+            inventoryUsagePct: 55.5,
+            netPosition: 100,
+            positionSide: 'LONG',
+            avgEntryPrice: 0.4,
+            currentFair: 0.45,
+            currentBid: 0.44,
+            currentAsk: 0.46,
+            fairUnrealizedPnl: 5,
+            exitPnlAtBestBidAsk: 4.5,
+            worstCaseLossToZero: 40,
+            worstCaseLossToOne: null,
+          },
+          {
+            conditionId: 'market-3',
+            tokenId: 'token-yes-3',
+            riskStatus: 'OK',
+            reasons: [],
+            reduceOnly: false,
+            allowBuy: true,
+            allowSell: true,
+            inventoryUsagePct: 30,
+            netPosition: -50,
+            positionSide: 'SHORT',
+            avgEntryPrice: 0.7,
+            currentFair: 0.65,
+            currentBid: 0.64,
+            currentAsk: 0.66,
+            fairUnrealizedPnl: 2.5,
+            exitPnlAtBestBidAsk: 2,
+            worstCaseLossToZero: null,
+            worstCaseLossToOne: 17,
+          },
+        ],
+      },
+      marketTitleByConditionId: new Map([
+        ['market-1', 'Russia-Ukraine Ceasefire before GTA VI?'],
+        ['market-2', 'Will bitcoin hit $1m before GTA VI?'],
+        ['market-3', 'New Rihanna Album before GTA VI?'],
+      ]),
+    }));
+
+    expect(text).toContain('Top Inventory Markets');
+    expect(text).toContain('Will bitcoin hit $1m before GTA VI?');
+    expect(text).toContain('LONG 100');
+    expect(text).toContain('Inventory Usage: 55.50%');
+    expect(text).toContain('New Rihanna Album before GTA VI?');
+    expect(text).toContain('SHORT 50');
+    expect(text).toContain('Inventory Usage: 30.00%');
+  });
+
+  test('renders top inventory fallback when no inventory decisions are provided', () => {
+    const text = formatTelegramRiskReport(makeInput());
+    expect(text).toContain('Top Inventory Markets');
+    expect(text).toContain('n/a');
+  });
 });
