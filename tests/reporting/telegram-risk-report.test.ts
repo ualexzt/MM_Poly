@@ -210,4 +210,45 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Top Inventory Markets');
     expect(text).toContain('n/a');
   });
+
+  test('renders non-OK duration and worsening risk trajectory', () => {
+    const base = makeInput();
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...base.risk,
+        status: 'WARNING',
+        reasons: ['inventory_soft_limit_exceeded', 'reduce_only_long_inventory'],
+        reduceOnlyActive: true,
+        timeInNonOkStatusMs: 90 * 60 * 1000,
+        riskTrajectory: {
+          previousStatus: 'WATCH',
+          currentStatus: 'WARNING',
+          previousUsagePct: 17.1,
+          currentUsagePct: 58.8,
+          usageDirection: 'worsening',
+          previousReduceOnly: false,
+          currentReduceOnly: true,
+          previousReasons: ['inventory_soft_limit_exceeded'],
+          currentReasons: ['inventory_soft_limit_exceeded', 'reduce_only_long_inventory'],
+        },
+      },
+    }));
+
+    expect(text).toContain('Time in Non-OK: 1h 30m');
+    expect(text).toContain('Risk Trajectory');
+    expect(text).toContain('Status: WATCH → WARNING');
+    expect(text).toContain('Inventory Usage: 17.10% → 58.80% worsening');
+    expect(text).toContain('Reduce-only: OFF → ON');
+    expect(text).toContain('Reasons: inventory_soft_limit_exceeded → inventory_soft_limit_exceeded, reduce_only_long_inventory');
+  });
+
+  test('renders diagnostic fallbacks when duration and trajectory are unavailable', () => {
+    const text = formatTelegramRiskReport(makeInput());
+
+    expect(text).toContain('Time in Non-OK: n/a');
+    expect(text).toContain('Status: n/a');
+    expect(text).toContain('Inventory Usage: n/a');
+    expect(text).toContain('Reduce-only: n/a');
+    expect(text).toContain('Reasons: n/a');
+  });
 });

@@ -1,6 +1,20 @@
 import { TradingActivitySnapshot } from '../accounting/trading-activity-tracker';
 import { MarketRiskDecision, RiskStatus, StrategyMode } from '../risk/strategy-risk-manager';
 
+export type RiskTrajectoryDirection = 'improving' | 'worsening' | 'flat';
+
+export interface RiskTrajectorySnapshot {
+  previousStatus: RiskStatus | null;
+  currentStatus: RiskStatus | null;
+  previousUsagePct: number | null;
+  currentUsagePct: number | null;
+  usageDirection: RiskTrajectoryDirection | null;
+  previousReduceOnly: boolean | null;
+  currentReduceOnly: boolean | null;
+  previousReasons: string[] | null;
+  currentReasons: string[] | null;
+}
+
 export interface TelegramRiskReportInput {
   mode: StrategyMode;
   startedAt: Date;
@@ -24,6 +38,8 @@ export interface TelegramRiskReportInput {
     openPositions: number;
     topMarketDecision: MarketRiskDecision | null;
     topInventoryDecisions?: MarketRiskDecision[];
+    timeInNonOkStatusMs?: number | null;
+    riskTrajectory?: RiskTrajectorySnapshot | null;
     singleMarketConcentrationPct: number | null;
     unrealizedToRealizedRatio: number | null;
   };
@@ -82,6 +98,11 @@ Unrealized/Realized: ${input.risk.unrealizedToRealizedRatio !== null ? `${input.
 ${worstCase}
 Kill Switch: ${input.risk.killSwitchActive ? 'ON' : 'OFF'}
 Exit at Bid/Ask: ${top?.exitPnlAtBestBidAsk !== null && top?.exitPnlAtBestBidAsk !== undefined ? formatSignedUsd(top.exitPnlAtBestBidAsk) : 'not available'}
+
+Time in Non-OK: ${formatOptionalDuration(input.risk.timeInNonOkStatusMs ?? null)}
+
+📉 <b>Risk Trajectory</b>
+${formatRiskTrajectory(input.risk.riskTrajectory ?? null).join('\n')}
 
 📊 <b>Top Inventory Markets</b>
 ${formatTopInventoryMarkets(input.risk.topInventoryDecisions ?? null, input.marketTitleByConditionId)}
@@ -175,6 +196,60 @@ function formatNullablePct(value: number | null): string {
 function formatQuoteShare(primaryMarketQuoteTraces: number, quoteTraces: number): string {
   if (quoteTraces <= 0) return 'n/a';
   return `${formatInteger(primaryMarketQuoteTraces)} / ${formatInteger(quoteTraces)}`;
+}
+
+function formatOptionalDuration(ms: number | null): string {
+  if (ms === null) return 'n/a';
+  const totalMinutes = Math.floor(ms / (60 * 1000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours === 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
+function formatReduceOnlyTransition(value: boolean | null): string {
+  if (value === null) return 'n/a';
+  return value ? 'ON' : 'OFF';
+}
+
+function formatReasonsTransition(reasons: string[] | null): string {
+  if (reasons === null) return 'n/a';
+  return reasons.length > 0 ? reasons.join(', ') : 'none';
+}
+
+function formatRiskTrajectory(trajectory: RiskTrajectorySnapshot | null): string[] {
+  if (trajectory === null) {
+    return [
+      'Status: n/a',
+      'Inventory Usage: n/a',
+      'Reduce-only: n/a',
+      'Reasons: n/a',
+    ];
+  }
+
+  const status = trajectory.previousStatus === null || trajectory.currentStatus === null
+    ? 'n/a'
+    : `${trajectory.previousStatus} → ${trajectory.currentStatus}`;
+
+  const usage = trajectory.previousUsagePct === null || trajectory.currentUsagePct === null || trajectory.usageDirection === null
+    ? 'n/a'
+    : `${formatNullablePct(trajectory.previousUsagePct)} → ${formatNullablePct(trajectory.currentUsagePct)} ${trajectory.usageDirection}`;
+
+  const reduceOnly = trajectory.previousReduceOnly === null || trajectory.currentReduceOnly === null
+    ? 'n/a'
+    : `${formatReduceOnlyTransition(trajectory.previousReduceOnly)} → ${formatReduceOnlyTransition(trajectory.currentReduceOnly)}`;
+
+  const reasons = trajectory.previousReasons === null || trajectory.currentReasons === null
+    ? 'n/a'
+    : `${formatReasonsTransition(trajectory.previousReasons)} → ${formatReasonsTransition(trajectory.currentReasons)}`;
+
+  return [
+    `Status: ${status}`,
+    `Inventory Usage: ${usage}`,
+    `Reduce-only: ${reduceOnly}`,
+    `Reasons: ${reasons}`,
+  ];
 }
 
 function formatTopInventoryMarkets(decisions: MarketRiskDecision[] | null, titleMap: Map<string, string>): string {
