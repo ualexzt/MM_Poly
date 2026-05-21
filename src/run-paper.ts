@@ -451,7 +451,7 @@ async function main() {
           const hasPosition = (pnlTracker.getPosition(d.tokenId)?.netSize ?? 0) !== 0;
           return quotedRecently || hasPosition;
       });
-      const allDecisionsToReport = recentDecisions.length > 0 ? recentDecisions : Array.from(latestRiskDecisions.values());
+      const allDecisionsToReport = recentDecisions;
 
       const globalRiskStatus = maxRiskStatus(allDecisionsToReport.map(d => d.riskStatus));
       const topDecision = activity.primaryMarketConditionId

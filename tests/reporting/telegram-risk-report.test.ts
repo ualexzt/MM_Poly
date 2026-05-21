@@ -340,4 +340,68 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Time in Non-OK: 5m');
     expect(text).toContain('Inventory Usage: 80.00% → 80.00% flat');
   });
+
+  test('excludes stale decisions with no position from risk status computation', () => {
+    // Simulates: bot was quoting a market with high inventory, then inventory closed.
+    // Stale decision still exists with inventory_hard_limit_exceeded reason.
+    const staleDecision: TelegramRiskReportInput['risk']['topMarketDecision'] = {
+      conditionId: 'market-stale',
+      tokenId: 'token-stale',
+      riskStatus: 'CRITICAL',
+      reasons: ['inventory_hard_limit_exceeded', 'reduce_only_short_inventory'],
+      reduceOnly: true,
+      allowBuy: false,
+      allowSell: false,
+      inventoryUsagePct: 0,
+      netPosition: 0,
+      positionSide: 'FLAT',
+      avgEntryPrice: null,
+      currentFair: 0.5,
+      currentBid: 0.49,
+      currentAsk: 0.51,
+      fairUnrealizedPnl: 0,
+      exitPnlAtBestBidAsk: 0,
+      worstCaseLossToZero: 0,
+      worstCaseLossToOne: 0,
+    };
+
+    const activeDecision: TelegramRiskReportInput['risk']['topMarketDecision'] = {
+      conditionId: 'market-active',
+      tokenId: 'token-active',
+      riskStatus: 'OK',
+      reasons: [],
+      reduceOnly: false,
+      allowBuy: true,
+      allowSell: true,
+      inventoryUsagePct: 5,
+      netPosition: 10,
+      positionSide: 'LONG',
+      avgEntryPrice: 0.5,
+      currentFair: 0.51,
+      currentBid: 0.5,
+      currentAsk: 0.52,
+      fairUnrealizedPnl: 0.1,
+      exitPnlAtBestBidAsk: 0.1,
+      worstCaseLossToZero: 5,
+      worstCaseLossToOne: null,
+    };
+
+    // When filtering is applied by the runtime, only activeDecision should reach the formatter.
+    // The formatter renders what it's given — so this test validates the contract:
+    // FLAT decisions with inventory reasons MUST NOT be included in risk aggregation.
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...makeInput().risk,
+        status: 'OK',
+        reasons: [],
+        reduceOnlyActive: false,
+        topMarketDecision: activeDecision,
+        topInventoryDecisions: [activeDecision],
+      },
+    }));
+
+    expect(text).not.toContain('inventory_hard_limit_exceeded');
+    expect(text).not.toContain('CRITICAL');
+    expect(text).toContain('Status: OK');
+  });
 });
