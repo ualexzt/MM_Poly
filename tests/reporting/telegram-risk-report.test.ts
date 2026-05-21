@@ -191,6 +191,18 @@ describe('formatTelegramRiskReport', () => {
     expect(text).toContain('Stay PAPER and inspect listed reasons before considering LIVE.');
   });
 
+  test('uses CRITICAL action for critical status', () => {
+    const text = formatTelegramRiskReport(makeInput({
+      risk: {
+        ...makeInput().risk,
+        status: 'CRITICAL',
+        reasons: ['inventory_hard_limit_exceeded'],
+      },
+    }));
+
+    expect(text).toContain('Review cancel and kill-switch path before continuing.');
+  });
+
   test('uses WARNING action for small_live mode', () => {
     const text = formatTelegramRiskReport(makeInput({
       mode: 'small_live',

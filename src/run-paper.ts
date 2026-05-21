@@ -473,11 +473,13 @@ async function main() {
       const timeInNonOkStatusMs = nonOkStatusStartedAtMs === null ? null : nowMs - nonOkStatusStartedAtMs;
       const topInventoryDecisions = getTopInventoryDecisions(allDecisionsToReport);
       const currentTopInventoryUsagePct = topInventoryDecisions[0]?.inventoryUsagePct ?? null;
+      const aggregatedReasons = Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons)));
+      const aggregatedReduceOnly = allDecisionsToReport.some(d => d.reduceOnly);
       const currentRiskSnapshot = {
         status: globalRiskStatus,
         usagePct: currentTopInventoryUsagePct,
-        reduceOnly: allDecisionsToReport.some(d => d.reduceOnly),
-        reasons: Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons))).sort(),
+        reduceOnly: aggregatedReduceOnly,
+        reasons: [...aggregatedReasons].sort(),
       };
       const riskTrajectory = buildRiskTrajectory(currentRiskSnapshot);
       previousRiskSnapshot = currentRiskSnapshot;
@@ -499,8 +501,8 @@ async function main() {
         activity,
         risk: {
           status: globalRiskStatus,
-          reasons: Array.from(new Set(allDecisionsToReport.flatMap(d => d.reasons))),
-          reduceOnlyActive: allDecisionsToReport.some(d => d.reduceOnly),
+          reasons: aggregatedReasons,
+          reduceOnlyActive: aggregatedReduceOnly,
           killSwitchActive: false,
           openPositions: openPositionsCount,
           topMarketDecision: topDecision,
