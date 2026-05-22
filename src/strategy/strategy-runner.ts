@@ -10,6 +10,7 @@ import { filterEligibleMarkets } from './market-selector';
 import { computeFairPrice, checkComplementConsistency } from '../engines/fair-price-engine';
 import { computeToxicityScore, getToxicityAction, checkHardToxicityCancel } from '../engines/toxicity-engine';
 import { computeInventorySkew, checkSellInventoryAvailable } from '../engines/inventory-engine';
+import { computeInventoryThrottle } from '../engines/inventory-throttle';
 import { InventoryTracker } from '../engines/inventory-tracker';
 import { generateQuoteCandidate, computeTargetHalfSpread } from '../engines/quote-engine';
 import { checkExposureLimits } from '../risk/exposure-limits';
@@ -280,6 +281,14 @@ export class StrategyRunner {
       }
 
       // §10 — Generate quote candidate
+      const inventoryThrottle = computeInventoryThrottle({
+        mode: config.mode,
+        profiles: config.inventory.throttleProfiles,
+        netPosition: invState.yesTokens - invState.noTokens,
+        inventoryUsagePct: Math.abs(invState.inventoryPct),
+        side,
+      });
+
       const result = generateQuoteCandidate({
         conditionId: market.conditionId,
         tokenId: market.yesTokenId,
@@ -293,6 +302,7 @@ export class StrategyRunner {
         inventorySkewCents,
         rewardConfig: market.rewardConfig,
         isBookStale: false,
+        inventoryThrottle,
       });
 
       if (!result) {

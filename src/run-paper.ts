@@ -12,6 +12,7 @@ import { TelegramNotifier } from './notifier/telegram';
 import { computeFairPrice } from './engines/fair-price-engine';
 import { filterEligibleMarkets } from './strategy/market-selector';
 import { generateQuoteCandidate } from './engines/quote-engine';
+import { computeInventoryThrottle } from './engines/inventory-throttle';
 import { createTrace } from './accounting/decision-trace';
 import { isBookStale } from './risk/stale-book-guard';
 import { MarketRiskDecision, maxRiskStatus, RiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
@@ -76,6 +77,7 @@ async function main() {
     maxMarketExposureUsd: config.inventory.maxMarketExposureUsd,
     concentrationWarningPct: 90,
     concentrationCriticalPctLive: 90,
+    throttleProfiles: config.inventory.throttleProfiles,
   });
 
   logger.info('=== Polymarket MM Strategy — Paper Trading ===');
@@ -258,6 +260,14 @@ async function main() {
       const maxPos = env.maxExposureUsd / 100;
       const inventoryPct = Math.min(100, (Math.abs(pos?.netSize || 0) / maxPos) * 100);
 
+      const inventoryThrottle = computeInventoryThrottle({
+        mode: env.mode,
+        profiles: config.inventory.throttleProfiles,
+        netPosition: pos?.netSize ?? 0,
+        inventoryUsagePct: inventoryPct,
+        side,
+      });
+
       const quoteResult = generateQuoteCandidate({
         conditionId: market.conditionId,
         tokenId: market.yesTokenId,
@@ -269,7 +279,8 @@ async function main() {
         toxicityScore,
         inventoryPct,
         inventorySkewCents: inventorySkew,
-        isBookStale: false
+        isBookStale: false,
+        inventoryThrottle,
       });
 
       const quotes = quoteResult ? [quoteResult.candidate] : [];
