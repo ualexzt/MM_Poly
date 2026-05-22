@@ -131,6 +131,28 @@ describe('inventory-throttle', () => {
     });
   });
 
+  test('returns independent no-throttle result objects', () => {
+    const first = computeInventoryThrottle({
+      mode: 'paper',
+      profiles,
+      netPosition: 0,
+      inventoryUsagePct: 50,
+      side: 'BUY',
+    });
+    first.blocked = true;
+
+    const second = computeInventoryThrottle({
+      mode: 'paper',
+      profiles,
+      netPosition: 0,
+      inventoryUsagePct: 50,
+      side: 'SELL',
+    });
+
+    expect(second.blocked).toBe(false);
+    expect(second).not.toBe(first);
+  });
+
   test('FLAT position does not throttle either side', () => {
     expect(computeInventoryThrottle({ mode: 'paper', profiles, netPosition: 0, inventoryUsagePct: 50, side: 'BUY' })).toMatchObject({
       isInventoryIncreasing: false,

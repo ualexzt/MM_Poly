@@ -34,13 +34,15 @@ export interface InventoryThrottleResult {
   reduceOnly: boolean;
 }
 
-const NO_THROTTLE: InventoryThrottleResult = {
-  isInventoryIncreasing: false,
-  sizeMultiplier: 1,
-  extraHalfSpreadCents: 0,
-  blocked: false,
-  reduceOnly: false,
-};
+function noThrottle(): InventoryThrottleResult {
+  return {
+    isInventoryIncreasing: false,
+    sizeMultiplier: 1,
+    extraHalfSpreadCents: 0,
+    blocked: false,
+    reduceOnly: false,
+  };
+}
 
 export function getInventoryThrottleProfile(
   mode: InventoryThrottleMode,
@@ -51,13 +53,13 @@ export function getInventoryThrottleProfile(
 
 export function computeInventoryThrottle(input: InventoryThrottleInput): InventoryThrottleResult {
   const { netPosition, inventoryUsagePct, side } = input;
-  if (netPosition === 0 || inventoryUsagePct === null) return NO_THROTTLE;
+  if (netPosition === 0 || inventoryUsagePct === null) return noThrottle();
 
   const isInventoryIncreasing =
     (netPosition > 0 && side === 'BUY') ||
     (netPosition < 0 && side === 'SELL');
 
-  if (!isInventoryIncreasing) return NO_THROTTLE;
+  if (!isInventoryIncreasing) return noThrottle();
 
   const profile = getInventoryThrottleProfile(input.mode, input.profiles);
   const reduceOnly = inventoryUsagePct >= profile.reduceOnlyThresholdPct;
