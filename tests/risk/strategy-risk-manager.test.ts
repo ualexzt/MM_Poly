@@ -285,23 +285,40 @@ describe('StrategyRiskManager', () => {
     expect(decision.reasons).toContain('kill_switch_active');
   });
 
-  test('escalates small live concentration above critical threshold to critical', () => {
-    const manager = new StrategyRiskManager(config);
+  test('uses small_live throttle profile reduce-only threshold when configured', () => {
+    const manager = new StrategyRiskManager({
+      ...config,
+      reduceOnlyLimitPct: 70,
+      throttleProfiles: {
+        paper: {
+          reduceOnlyThresholdPct: 50,
+          tiers: [],
+        },
+        small_live: {
+          reduceOnlyThresholdPct: 45,
+          tiers: [],
+        },
+      },
+    });
 
     const decision = manager.evaluateMarket({
       mode: 'small_live',
       conditionId: 'market-1',
       tokenId: 'token-yes',
-      position: makePosition({ netSize: 10, avgCost: 0.40 }),
+      position: makePosition({ netSize: 50, avgCost: 0.40 }),
       book: makeBook(),
       currentFair: 0.45,
-      primaryMarketQuoteSharePct: 90.01,
+      primaryMarketQuoteSharePct: 50,
       hasActiveQuotes: true,
       isBookStale: false,
       killSwitchActive: false,
     });
 
-    expect(decision.riskStatus).toBe('CRITICAL');
-    expect(decision.reasons).toContain('single_market_concentration_critical');
+    expect(decision.inventoryUsagePct).toBeCloseTo(45);
+    expect(decision.reduceOnly).toBe(true);
+    expect(decision.allowBuy).toBe(false);
+    expect(decision.allowSell).toBe(true);
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reasons).toContain('reduce_only_long_inventory');
   });
 });

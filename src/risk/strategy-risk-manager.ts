@@ -1,5 +1,6 @@
 import { Position } from '../accounting/paper-pnl-tracker';
 import { BookState } from '../types/book';
+import { InventoryThrottleProfiles, getInventoryThrottleProfile } from '../engines/inventory-throttle';
 
 export type RiskStatus = 'OK' | 'WATCH' | 'WARNING' | 'CRITICAL';
 export type PositionSide = 'LONG' | 'SHORT' | 'FLAT';
@@ -12,6 +13,7 @@ export interface StrategyRiskConfig {
   maxMarketExposureUsd: number;
   concentrationWarningPct: number;
   concentrationCriticalPctLive: number;
+  throttleProfiles?: InventoryThrottleProfiles;
 }
 
 export interface StrategyRiskInput {
@@ -65,12 +67,18 @@ export function maxRiskStatus(statuses: RiskStatus[]): RiskStatus {
 export class StrategyRiskManager {
   constructor(private config: StrategyRiskConfig) {}
 
+  private getReduceOnlyLimitPct(mode: StrategyMode): number {
+    if (!this.config.throttleProfiles) return this.config.reduceOnlyLimitPct;
+    return getInventoryThrottleProfile(mode, this.config.throttleProfiles).reduceOnlyThresholdPct;
+  }
+
   evaluateMarket(input: StrategyRiskInput): MarketRiskDecision {
     const netPosition = input.position?.netSize ?? 0;
     const absPosition = Math.abs(netPosition);
     const positionSide = this.getPositionSide(netPosition);
     const avgEntryPrice = input.position && netPosition !== 0 ? input.position.avgCost : null;
     const inventoryUsagePct = this.computeInventoryUsagePct(absPosition, input.currentFair);
+    const reduceOnlyLimitPct = this.getReduceOnlyLimitPct(input.mode);
 
     const reasons: string[] = [];
     let reduceOnly = false;
@@ -81,7 +89,7 @@ export class StrategyRiskManager {
       reasons.push('inventory_soft_limit_exceeded');
     }
 
-    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyLimitPct) {
+    if (inventoryUsagePct !== null && inventoryUsagePct >= reduceOnlyLimitPct) {
       reduceOnly = true;
       if (netPosition < 0) {
         allowSell = false;
@@ -126,7 +134,7 @@ export class StrategyRiskManager {
     return {
       conditionId: input.conditionId,
       tokenId: input.tokenId,
-      riskStatus: this.computeRiskStatus(reasons, inventoryUsagePct),
+      riskStatus: this.computeRiskStatus(reasons, inventoryUsagePct, reduceOnlyLimitPct),
       reasons,
       reduceOnly,
       allowBuy,
@@ -181,7 +189,7 @@ export class StrategyRiskManager {
     return Math.abs(netPosition) * (avgEntryPrice - book.bestAsk);
   }
 
-  private computeRiskStatus(reasons: string[], inventoryUsagePct: number | null): RiskStatus {
+  private computeRiskStatus(reasons: string[], inventoryUsagePct: number | null, reduceOnlyLimitPct: number): RiskStatus {
     if (
       reasons.includes('kill_switch_active') ||
       reasons.includes('stale_book_with_active_quotes') ||
@@ -195,7 +203,7 @@ export class StrategyRiskManager {
       return 'WARNING';
     }
 
-    if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.reduceOnlyLimitPct) {
+    if (inventoryUsagePct !== null && inventoryUsagePct >= reduceOnlyLimitPct) {
       return 'WARNING';
     }
 
