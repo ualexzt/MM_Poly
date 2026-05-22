@@ -101,4 +101,78 @@ describe('quote-engine', () => {
     });
     expect(result!.candidate.sizeUsd).toBeGreaterThanOrEqual(49); // Price is ~0.49, 103 shares = 50.47
   });
+
+  test('applies inventory throttle extra widening to quote price', () => {
+    const withoutThrottle = generateQuoteCandidate({
+      conditionId: 'cond1', tokenId: 'yes1', side: 'BUY',
+      fairPrice: 0.50, book: baseBook,
+      spread: { baseHalfSpreadCents: 1.0, minHalfSpreadTicks: 1, adverseSelectionBufferCents: 0, toxicityWideningMaxCents: 0, inventoryWideningMaxCents: 0, volatilityMultiplier: 1, rewardTighteningMaxCents: 1 },
+      size: { baseOrderSizeUsd: 10, maxOrderSizeUsd: 100, minSizeMultiplierOverExchangeMin: 1, respectRewardMinIncentiveSize: false },
+      toxicityScore: 0.1, inventoryPct: 0, inventorySkewCents: 0,
+    });
+
+    const withThrottle = generateQuoteCandidate({
+      conditionId: 'cond1', tokenId: 'yes1', side: 'BUY',
+      fairPrice: 0.50, book: baseBook,
+      spread: { baseHalfSpreadCents: 1.0, minHalfSpreadTicks: 1, adverseSelectionBufferCents: 0, toxicityWideningMaxCents: 0, inventoryWideningMaxCents: 0, volatilityMultiplier: 1, rewardTighteningMaxCents: 1 },
+      size: { baseOrderSizeUsd: 10, maxOrderSizeUsd: 100, minSizeMultiplierOverExchangeMin: 1, respectRewardMinIncentiveSize: false },
+      toxicityScore: 0.1, inventoryPct: 0, inventorySkewCents: 0,
+      inventoryThrottle: {
+        isInventoryIncreasing: true,
+        sizeMultiplier: 1,
+        extraHalfSpreadCents: 2,
+        blocked: false,
+        reduceOnly: false,
+      },
+    });
+
+    expect(withThrottle!.targetHalfSpreadCents).toBe(withoutThrottle!.targetHalfSpreadCents + 2);
+    expect(withThrottle!.candidate.price).toBeLessThan(withoutThrottle!.candidate.price);
+  });
+
+  test('applies inventory throttle size multiplier', () => {
+    const withoutThrottle = generateQuoteCandidate({
+      conditionId: 'cond1', tokenId: 'yes1', side: 'BUY',
+      fairPrice: 0.50, book: baseBook,
+      spread: { baseHalfSpreadCents: 1.0, minHalfSpreadTicks: 1, adverseSelectionBufferCents: 0, toxicityWideningMaxCents: 0, inventoryWideningMaxCents: 0, volatilityMultiplier: 1, rewardTighteningMaxCents: 1 },
+      size: { baseOrderSizeUsd: 10, maxOrderSizeUsd: 100, minSizeMultiplierOverExchangeMin: 1, respectRewardMinIncentiveSize: false },
+      toxicityScore: 0.1, inventoryPct: 0, inventorySkewCents: 0,
+    });
+
+    const result = generateQuoteCandidate({
+      conditionId: 'cond1', tokenId: 'yes1', side: 'BUY',
+      fairPrice: 0.50, book: baseBook,
+      spread: { baseHalfSpreadCents: 1.0, minHalfSpreadTicks: 1, adverseSelectionBufferCents: 0, toxicityWideningMaxCents: 0, inventoryWideningMaxCents: 0, volatilityMultiplier: 1, rewardTighteningMaxCents: 1 },
+      size: { baseOrderSizeUsd: 10, maxOrderSizeUsd: 100, minSizeMultiplierOverExchangeMin: 1, respectRewardMinIncentiveSize: false },
+      toxicityScore: 0.1, inventoryPct: 0, inventorySkewCents: 0,
+      inventoryThrottle: {
+        isInventoryIncreasing: true,
+        sizeMultiplier: 0.5,
+        extraHalfSpreadCents: 0,
+        blocked: false,
+        reduceOnly: false,
+      },
+    });
+
+    expect(result!.candidate.sizeUsd).toBeCloseTo(withoutThrottle!.candidate.sizeUsd * 0.5, 2);
+  });
+
+  test('returns null when inventory throttle blocks the side', () => {
+    const result = generateQuoteCandidate({
+      conditionId: 'cond1', tokenId: 'yes1', side: 'BUY',
+      fairPrice: 0.50, book: baseBook,
+      spread: { baseHalfSpreadCents: 1.0, minHalfSpreadTicks: 1, adverseSelectionBufferCents: 0, toxicityWideningMaxCents: 0, inventoryWideningMaxCents: 0, volatilityMultiplier: 1, rewardTighteningMaxCents: 1 },
+      size: { baseOrderSizeUsd: 10, maxOrderSizeUsd: 100, minSizeMultiplierOverExchangeMin: 1, respectRewardMinIncentiveSize: false },
+      toxicityScore: 0.1, inventoryPct: 0, inventorySkewCents: 0,
+      inventoryThrottle: {
+        isInventoryIncreasing: true,
+        sizeMultiplier: 0.05,
+        extraHalfSpreadCents: 3,
+        blocked: true,
+        reduceOnly: false,
+      },
+    });
+
+    expect(result).toBeNull();
+  });
 });

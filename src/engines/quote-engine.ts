@@ -2,6 +2,7 @@ import { BookState } from '../types/book';
 import { QuoteCandidate } from '../types/quote';
 import { RewardConfig } from '../types/market';
 import { SpreadConfig, SizeConfig } from '../types/config';
+import { InventoryThrottleResult } from './inventory-throttle';
 import { roundDownToTick, roundUpToTick } from '../utils/math';
 
 export interface QuoteEngineInputs {
@@ -21,6 +22,7 @@ export interface QuoteEngineInputs {
 
   rewardConfig?: RewardConfig | null;
   isBookStale?: boolean;
+  inventoryThrottle?: InventoryThrottleResult;
 
   /** Optional: override computed half-spread (e.g. already widened by toxicity) */
   targetHalfSpreadCentsOverride?: number;
@@ -90,7 +92,8 @@ function computeQuoteSize(
   inventoryPct: number,
   inventoryAction: 'below_soft_limit' | 'above_soft_limit' | 'above_hard_limit',
   side: 'BUY' | 'SELL',
-  rewardConfig?: RewardConfig | null
+  rewardConfig?: RewardConfig | null,
+  inventoryThrottleSizeMultiplier = 1
 ): number {
   let sizeUsd = size.baseOrderSizeUsd;
 
@@ -111,6 +114,9 @@ function computeQuoteSize(
       sizeUsd *= 0.5;
     }
   }
+
+  // Inventory throttle size multiplier
+  sizeUsd *= inventoryThrottleSizeMultiplier;
 
   // Depth multiplier (§10.6)
   if (book.depth3Usd < 1000) {
@@ -175,12 +181,13 @@ export function generateQuoteCandidate(inputs: QuoteEngineInputs): QuoteEngineRe
     conditionId, tokenId, side,
     fairPrice, book, spread, size,
     toxicityScore, inventoryPct, inventorySkewCents,
-    rewardConfig, isBookStale
+    rewardConfig, isBookStale, inventoryThrottle
   } = inputs;
 
   // Safety guards
   if (isBookStale) return null;
   if (!book.bestBid || !book.bestAsk) return null;
+  if (inventoryThrottle?.blocked) return null;
 
   const inventoryAction: 'below_soft_limit' | 'above_soft_limit' | 'above_hard_limit' =
     inventoryPct > 65 ? 'above_hard_limit' :
@@ -188,8 +195,9 @@ export function generateQuoteCandidate(inputs: QuoteEngineInputs): QuoteEngineRe
     'below_soft_limit';
 
   // Compute target half-spread
-  const halfSpreadCents = inputs.targetHalfSpreadCentsOverride ??
+  const baseHalfSpreadCents = inputs.targetHalfSpreadCentsOverride ??
     computeTargetHalfSpread(spread, toxicityScore, inventoryPct, book, rewardConfig);
+  const halfSpreadCents = baseHalfSpreadCents + (inventoryThrottle?.extraHalfSpreadCents ?? 0);
 
   const halfSpread = halfSpreadCents / 100;
   const skew = inventorySkewCents / 100;
@@ -225,7 +233,17 @@ export function generateQuoteCandidate(inputs: QuoteEngineInputs): QuoteEngineRe
   if (price <= 0 || price >= 1) return null;
 
   // Compute size
-  const tokenSize = computeQuoteSize(size, price, book, toxicityScore, inventoryPct, inventoryAction, side, rewardConfig);
+  const tokenSize = computeQuoteSize(
+    size,
+    price,
+    book,
+    toxicityScore,
+    inventoryPct,
+    inventoryAction,
+    side,
+    rewardConfig,
+    inventoryThrottle?.sizeMultiplier ?? 1
+  );
   if (tokenSize < book.minOrderSize) return null;
 
   const candidate: QuoteCandidate = {
