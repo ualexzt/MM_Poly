@@ -31,7 +31,25 @@ export const defaultConfig: StrategyConfig = {
     maxMarketExposureUsd: 10, maxEventExposureUsd: 25,
     maxTotalStrategyExposureUsd: 100,
     softLimitPct: 25, reduceOnlyLimitPct: 50, hardLimitPct: 75,
-    maxSkewCents: 4.5, skewSensitivity: 0.70
+    maxSkewCents: 4.5, skewSensitivity: 0.70,
+    throttleProfiles: {
+      paper: {
+        reduceOnlyThresholdPct: 50,
+        tiers: [
+          { startPct: 25, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.5 },
+          { startPct: 35, sizeMultiplier: 0.25, extraHalfSpreadCents: 1.5 },
+          { startPct: 45, sizeMultiplier: 0.05, extraHalfSpreadCents: 3.0, blockNewInventory: true },
+        ],
+      },
+      small_live: {
+        reduceOnlyThresholdPct: 45,
+        tiers: [
+          { startPct: 20, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
+          { startPct: 30, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
+          { startPct: 40, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
+        ],
+      },
+    }
   },
   toxicity: {
     cancelIfMidpointMoves10sCentsGte: 1.0,

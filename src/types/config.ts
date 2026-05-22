@@ -1,3 +1,5 @@
+import { InventoryThrottleProfiles } from '../engines/inventory-throttle';
+
 export interface FairPriceWeights {
   microprice: number;
   midpoint: number;
@@ -51,6 +53,7 @@ export interface InventoryConfig {
   hardLimitPct: number;
   maxSkewCents: number;
   skewSensitivity: number;
+  throttleProfiles: InventoryThrottleProfiles;
 }
 
 export interface ToxicityConfig {

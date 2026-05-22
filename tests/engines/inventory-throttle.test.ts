@@ -3,6 +3,7 @@ import {
   getInventoryThrottleProfile,
   InventoryThrottleProfile,
 } from '../../src/engines/inventory-throttle';
+import { defaultConfig } from '../../src/strategy/config';
 
 const paperProfile: InventoryThrottleProfile = {
   reduceOnlyThresholdPct: 50,
@@ -28,6 +29,22 @@ const profiles = {
 };
 
 describe('inventory-throttle', () => {
+  test('default config exposes paper and small_live throttle profiles', () => {
+    expect(defaultConfig.inventory.throttleProfiles.paper.reduceOnlyThresholdPct).toBe(50);
+    expect(defaultConfig.inventory.throttleProfiles.paper.tiers).toEqual([
+      { startPct: 25, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.5 },
+      { startPct: 35, sizeMultiplier: 0.25, extraHalfSpreadCents: 1.5 },
+      { startPct: 45, sizeMultiplier: 0.05, extraHalfSpreadCents: 3.0, blockNewInventory: true },
+    ]);
+
+    expect(defaultConfig.inventory.throttleProfiles.small_live.reduceOnlyThresholdPct).toBe(45);
+    expect(defaultConfig.inventory.throttleProfiles.small_live.tiers).toEqual([
+      { startPct: 20, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
+      { startPct: 30, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
+      { startPct: 40, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
+    ]);
+  });
+
   test('selects paper profile for paper and shadow modes', () => {
     expect(getInventoryThrottleProfile('paper', profiles)).toBe(paperProfile);
     expect(getInventoryThrottleProfile('shadow', profiles)).toBe(paperProfile);
