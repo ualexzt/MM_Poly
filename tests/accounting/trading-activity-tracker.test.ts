@@ -60,6 +60,36 @@ describe('TradingActivityTracker', () => {
     expect(snapshot.primaryMarketQuoteSharePct).toBeCloseTo(75);
   });
 
+  test('counts explicit quote decision categories without changing fill metrics', () => {
+    const tracker = new TradingActivityTracker();
+
+    tracker.recordQuoteGenerated('market-1');
+    tracker.recordQuoteRejected('market-1');
+    tracker.recordQuoteSkipped('market-1', 'staleBookSkipped');
+    tracker.recordQuoteSkipped('market-1', 'invalidBookSkipped');
+    tracker.recordQuoteSkipped('market-2', 'invalidFairSkipped');
+    tracker.recordQuoteSkipped('market-2', 'cooldownSkipped');
+    tracker.recordQuoteSkipped('market-2', 'quoteEngineNullSkipped');
+    tracker.recordQuoteSkipped('market-2', 'unchangedSkipped');
+
+    const snapshot = tracker.snapshot();
+
+    expect(snapshot.quoteGeneratedCount).toBe(1);
+    expect(snapshot.quoteRejectedCount).toBe(1);
+    expect(snapshot.quoteSkippedCount).toBe(6);
+    expect(snapshot.staleBookSkippedCount).toBe(1);
+    expect(snapshot.invalidBookSkippedCount).toBe(1);
+    expect(snapshot.invalidFairSkippedCount).toBe(1);
+    expect(snapshot.cooldownSkippedCount).toBe(1);
+    expect(snapshot.quoteEngineNullSkippedCount).toBe(1);
+    expect(snapshot.unchangedSkippedCount).toBe(1);
+    expect(snapshot.quoteTraces).toBe(8);
+    expect(snapshot.primaryMarketConditionId).toBe('market-2');
+    expect(snapshot.primaryMarketQuoteTraces).toBe(4);
+    expect(snapshot.primaryMarketQuoteSharePct).toBeCloseTo(50);
+    expect(snapshot.fillsTotal).toBe(0);
+  });
+
   test('returns null averages and primary market when empty', () => {
     const tracker = new TradingActivityTracker();
 
