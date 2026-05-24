@@ -51,6 +51,8 @@ describe('risk-gated paper report integration', () => {
     activityTracker.recordFill('market-1', fill);
     activityTracker.recordQuoteGenerated('market-1');
     activityTracker.recordQuoteGenerated('market-1');
+    activityTracker.recordQuoteSkipped('market-1', 'staleBookSkipped');
+    activityTracker.recordQuoteSkipped('market-1', 'quoteEngineNullSkipped');
 
     const activity = activityTracker.snapshot();
     const decision = riskManager.evaluateMarket({
@@ -102,6 +104,8 @@ describe('risk-gated paper report integration', () => {
     expect(text).toContain('Position: SHORT 80');
     expect(text).toContain('Reduce-only: ON');
     expect(text).toContain('Risk Test Market');
+    expect(text).toContain('Quotes: 4 submitted/replaced: 2 risk-blocked: 0 skipped: 2');
+    expect(text).toContain('Skips: stale book 1, invalid book 0, invalid fair 0, cooldown 0, no quote 1, unchanged 0');
     expect(text).not.toContain('Total Trades');
   });
 });

@@ -82,7 +82,8 @@ SELL: ${input.activity.sellFills} fills / ${formatContracts(input.activity.sellC
 Volume: ${formatContracts(input.activity.totalContracts)} contracts / ${formatUsd(input.activity.notionalVolume)}
 Active Markets: ${input.activity.activeMarkets}
 Open Positions: ${openPositions}
-Quotes: ${formatInteger(input.activity.quoteTraces)} generated: ${formatInteger(input.activity.quoteGeneratedCount)} rejected: ${formatInteger(input.activity.quoteRejectedCount)}
+Quotes: ${formatInteger(input.activity.quoteTraces)} submitted/replaced: ${formatInteger(input.activity.quoteGeneratedCount)} risk-blocked: ${formatInteger(input.activity.quoteRejectedCount)} skipped: ${formatInteger(input.activity.quoteSkippedCount)}
+Skips: stale book ${formatInteger(input.activity.staleBookSkippedCount)}, invalid book ${formatInteger(input.activity.invalidBookSkippedCount)}, invalid fair ${formatInteger(input.activity.invalidFairSkippedCount)}, cooldown ${formatInteger(input.activity.cooldownSkippedCount)}, no quote ${formatInteger(input.activity.quoteEngineNullSkippedCount)}, unchanged ${formatInteger(input.activity.unchangedSkippedCount)}
 
 📦 <b>Inventory</b>
 Position: ${position}
