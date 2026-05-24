@@ -274,6 +274,17 @@ function formatWorstCase(top: MarketRiskDecision | null): string {
 function formatAction(mode: StrategyMode, status: RiskStatus, reasons: string[]): string {
   if (mode === 'disabled') return 'Bot disabled. Review configuration before enabling trading.';
 
+  if (
+    reasons.includes('wide_book_spread') ||
+    reasons.includes('negative_executable_exit') ||
+    reasons.includes('severe_negative_executable_exit') ||
+    reasons.includes('invalid_book_crossed_or_missing')
+  ) {
+    return mode === 'paper'
+      ? 'Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.'
+      : 'Executable liquidity risk active. Reduce exposure and inspect affected markets.';
+  }
+
   if (status === 'OK') {
     return mode === 'paper'
       ? 'Continue PAPER soak and monitor normal risk metrics.'

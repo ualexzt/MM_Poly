@@ -108,4 +108,84 @@ describe('risk-gated paper report integration', () => {
     expect(text).toContain('Skips: stale book 1, invalid book 0, invalid fair 0, cooldown 0, no quote 1, unchanged 0');
     expect(text).not.toContain('Total Trades');
   });
+
+  test('negative executable exit appears as warning action in paper report', () => {
+    const activityTracker = new TradingActivityTracker();
+    const riskManager = new StrategyRiskManager({
+      softInventoryLimitPct: 25,
+      reduceOnlyLimitPct: 70,
+      hardInventoryLimitPct: 90,
+      maxMarketExposureUsd: 10,
+      concentrationWarningPct: 90,
+      concentrationCriticalPctLive: 90,
+      maxBookSpreadCents: 8,
+      negativeExitWarningUsd: 0,
+      negativeExitCriticalUsd: -1,
+    });
+
+    activityTracker.recordQuoteGenerated('market-1');
+
+    const decision = riskManager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: {
+        tokenId: 'token-yes',
+        netSize: -2,
+        avgCost: 0.65,
+        realizedPnl: 0,
+        totalBoughtUsd: 0,
+        totalSoldUsd: 1.30,
+        totalVolumeUsd: 1.30,
+      },
+      book: {
+        ...makeBook(),
+        bestBid: 0.01,
+        bestAsk: 0.99,
+        midpoint: 0.50,
+        spread: 0.98,
+        spreadTicks: 98,
+      },
+      currentFair: 0.2555,
+      primaryMarketQuoteSharePct: activityTracker.snapshot().primaryMarketQuoteSharePct,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    const text = formatTelegramRiskReport({
+      mode: 'paper',
+      startedAt: new Date('2026-05-24T00:00:00Z'),
+      reportAt: new Date('2026-05-24T17:00:00Z'),
+      warningsCount: 0,
+      errorsCount: 0,
+      pnl: {
+        realizedPeriod: 0,
+        realizedCumulative: 0,
+        unrealizedFairBased: decision.fairUnrealizedPnl,
+        estimatedMakerRebate: 0,
+        estimatedTotalPnl: decision.fairUnrealizedPnl,
+        valuationMode: 'fair',
+      },
+      activity: activityTracker.snapshot(),
+      risk: {
+        status: maxRiskStatus([decision.riskStatus]),
+        reasons: decision.reasons,
+        reduceOnlyActive: decision.reduceOnly,
+        killSwitchActive: false,
+        openPositions: 1,
+        topMarketDecision: decision,
+        topInventoryDecisions: [decision],
+        singleMarketConcentrationPct: activityTracker.snapshot().primaryMarketQuoteSharePct,
+        unrealizedToRealizedRatio: null,
+      },
+      marketTitleByConditionId: new Map([['market-1', 'Wide Book Test Market']]),
+    });
+
+    expect(text).toContain('Status: WARNING');
+    expect(text).toContain('negative_executable_exit');
+    expect(text).toContain('wide_book_spread');
+    expect(text).toContain('Exit at Bid/Ask: -$0.68');
+    expect(text).toContain('Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.');
+  });
 });
