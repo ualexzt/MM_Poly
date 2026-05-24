@@ -77,6 +77,9 @@ async function main() {
     maxMarketExposureUsd: config.inventory.maxMarketExposureUsd,
     concentrationWarningPct: 90,
     concentrationCriticalPctLive: 90,
+    maxBookSpreadCents: config.marketFilter.maxSpreadCents,
+    negativeExitWarningUsd: 0,
+    negativeExitCriticalUsd: -1,
     throttleProfiles: config.inventory.throttleProfiles,
   });
 
