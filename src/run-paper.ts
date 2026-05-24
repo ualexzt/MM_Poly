@@ -166,7 +166,10 @@ async function main() {
   function evaluateMarket(market: MarketState, tradePrice?: number) {
     const yesBook = books.get(market.yesTokenId);
     const noBook = books.get(market.noTokenId);
-    if (!yesBook || !noBook) return;
+    if (!yesBook || !noBook) {
+      activityTracker.recordQuoteSkipped(market.conditionId, 'invalidBookSkipped');
+      return;
+    }
 
     const ao = getActiveOrders(market.conditionId);
     const bookStale = isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs);
@@ -189,6 +192,7 @@ async function main() {
       if (hasActiveQuotesBeforeFair) {
         cancelMarketOrders(market.conditionId);
       }
+      activityTracker.recordQuoteSkipped(market.conditionId, 'staleBookSkipped');
       return;
     }
 
@@ -199,7 +203,10 @@ async function main() {
       complementMidpoint: noBook.midpoint,
       weights: config.fairPrice.weights
     });
-    if (!yesFair) return;
+    if (!yesFair) {
+      activityTracker.recordQuoteSkipped(market.conditionId, 'invalidFairSkipped');
+      return;
+    }
 
     // Always simulate fills if a trade price came through WS
     // We do NOT cancel orders before fill check — they sit in the book like real orders
@@ -244,7 +251,10 @@ async function main() {
     // Quote cooldown: skip recalculation if < 10s since last quote for this market
     const now = Date.now();
     const lastQuote = lastQuoteTime.get(market.conditionId) || 0;
-    if (now - lastQuote < QUOTE_COOLDOWN_MS) return;
+    if (now - lastQuote < QUOTE_COOLDOWN_MS) {
+      activityTracker.recordQuoteSkipped(market.conditionId, 'cooldownSkipped');
+      return;
+    }
     lastQuoteTime.set(market.conditionId, now);
 
     const toxicityScore = 0.1;
@@ -283,13 +293,19 @@ async function main() {
         inventoryThrottle,
       });
 
-      const quotes = quoteResult ? [quoteResult.candidate] : [];
+      if (!quoteResult) {
+        activityTracker.recordQuoteSkipped(market.conditionId, 'quoteEngineNullSkipped');
+        continue;
+      }
+
+      const quotes = [quoteResult.candidate];
 
       for (const quote of quotes) {
         const current = ao[aoKey];
 
         // Only replace if price/size changed meaningfully or order is too old
         if (!shouldReplace(current, quote.price, quote.size, now)) {
+          activityTracker.recordQuoteSkipped(market.conditionId, 'unchangedSkipped');
           continue;
         }
 
