@@ -13,6 +13,9 @@ export interface StrategyRiskConfig {
   maxMarketExposureUsd: number;
   concentrationWarningPct: number;
   concentrationCriticalPctLive: number;
+  maxBookSpreadCents?: number;
+  negativeExitWarningUsd?: number;
+  negativeExitCriticalUsd?: number;
   throttleProfiles?: InventoryThrottleProfiles;
 }
 
@@ -84,6 +87,7 @@ export class StrategyRiskManager {
     let reduceOnly = false;
     let allowBuy = true;
     let allowSell = true;
+    const exitPnlAtBestBidAsk = this.computeExitPnlAtBestBidAsk(netPosition, avgEntryPrice, input.book);
 
     if (inventoryUsagePct !== null && inventoryUsagePct >= this.config.softInventoryLimitPct) {
       reasons.push('inventory_soft_limit_exceeded');
@@ -131,6 +135,39 @@ export class StrategyRiskManager {
       reasons.push('kill_switch_active');
     }
 
+    const hasOpenPosition = netPosition !== 0;
+    const bestBid = input.book?.bestBid ?? null;
+    const bestAsk = input.book?.bestAsk ?? null;
+
+    if (bestBid === null || bestAsk === null || bestBid <= 0 || bestAsk <= 0 || bestBid >= bestAsk) {
+      allowBuy = false;
+      allowSell = false;
+      reasons.push('invalid_book_crossed_or_missing');
+    } else {
+      const spreadCents = (bestAsk - bestBid) * 100;
+      const maxBookSpreadCents = this.config.maxBookSpreadCents ?? 8;
+      if (spreadCents > maxBookSpreadCents) {
+        reasons.push('wide_book_spread');
+      }
+    }
+
+    const negativeExitWarningUsd = this.config.negativeExitWarningUsd ?? 0;
+    const negativeExitCriticalUsd = this.config.negativeExitCriticalUsd ?? -1;
+
+    if (hasOpenPosition && exitPnlAtBestBidAsk !== null && exitPnlAtBestBidAsk < negativeExitWarningUsd) {
+      reasons.push('negative_executable_exit');
+    }
+
+    if (hasOpenPosition && exitPnlAtBestBidAsk !== null && exitPnlAtBestBidAsk <= negativeExitCriticalUsd) {
+      reduceOnly = true;
+      reasons.push('severe_negative_executable_exit');
+      if (netPosition < 0) {
+        allowSell = false;
+      } else if (netPosition > 0) {
+        allowBuy = false;
+      }
+    }
+
     return {
       conditionId: input.conditionId,
       tokenId: input.tokenId,
@@ -147,7 +184,7 @@ export class StrategyRiskManager {
       currentBid: input.book?.bestBid ?? null,
       currentAsk: input.book?.bestAsk ?? null,
       fairUnrealizedPnl: this.computeFairUnrealizedPnl(netPosition, avgEntryPrice, input.currentFair),
-      exitPnlAtBestBidAsk: this.computeExitPnlAtBestBidAsk(netPosition, avgEntryPrice, input.book),
+      exitPnlAtBestBidAsk,
       worstCaseLossToZero: positionSide === 'LONG' && avgEntryPrice !== null ? absPosition * avgEntryPrice : null,
       worstCaseLossToOne: positionSide === 'SHORT' && avgEntryPrice !== null ? absPosition * (1 - avgEntryPrice) : null,
     };
@@ -194,9 +231,18 @@ export class StrategyRiskManager {
       reasons.includes('kill_switch_active') ||
       reasons.includes('stale_book_with_active_quotes') ||
       reasons.includes('inventory_hard_limit_exceeded') ||
-      reasons.includes('single_market_concentration_critical')
+      reasons.includes('single_market_concentration_critical') ||
+      reasons.includes('severe_negative_executable_exit')
     ) {
       return 'CRITICAL';
+    }
+
+    if (
+      reasons.includes('invalid_book_crossed_or_missing') ||
+      reasons.includes('negative_executable_exit') ||
+      reasons.includes('wide_book_spread')
+    ) {
+      return 'WARNING';
     }
 
     if (reasons.includes('single_market_concentration_warning')) {

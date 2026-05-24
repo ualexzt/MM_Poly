@@ -321,4 +321,79 @@ describe('StrategyRiskManager', () => {
     expect(decision.riskStatus).toBe('WARNING');
     expect(decision.reasons).toContain('reduce_only_long_inventory');
   });
+
+  test('warns when an open short has negative executable exit despite low inventory usage', () => {
+    const manager = new StrategyRiskManager({
+      ...config,
+      maxMarketExposureUsd: 10,
+    });
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -2, avgCost: 0.65 }),
+      book: makeBook({ bestBid: 0.01, bestAsk: 0.99, spread: 0.98, spreadTicks: 98 }),
+      currentFair: 0.2555,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.inventoryUsagePct).toBeCloseTo(5.11);
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-0.68);
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reasons).toContain('negative_executable_exit');
+    expect(decision.reasons).toContain('wide_book_spread');
+    expect(decision.reduceOnly).toBe(false);
+    expect(decision.allowBuy).toBe(true);
+    expect(decision.allowSell).toBe(true);
+  });
+
+  test('blocks both sides and warns on crossed book', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+      currentFair: 0.55,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reasons).toContain('invalid_book_crossed_or_missing');
+    expect(decision.allowBuy).toBe(false);
+    expect(decision.allowSell).toBe(false);
+  });
+
+  test('escalates severe negative executable exit to critical reduce-only behavior', () => {
+    const manager = new StrategyRiskManager(config);
+
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -4, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.01, bestAsk: 0.90, spread: 0.89, spreadTicks: 89 }),
+      currentFair: 0.25,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-1.60);
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('severe_negative_executable_exit');
+    expect(decision.reduceOnly).toBe(true);
+    expect(decision.allowBuy).toBe(true);
+    expect(decision.allowSell).toBe(false);
+  });
 });
