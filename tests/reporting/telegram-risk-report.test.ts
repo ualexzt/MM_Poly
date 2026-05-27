@@ -66,6 +66,7 @@ function makeInput(overrides: Partial<TelegramRiskReportInput> = {}): TelegramRi
         exitPnlAtBestBidAsk: 10.15,
         worstCaseLossToZero: null,
         worstCaseLossToOne: 63.31,
+        negativeExitThrottle: null,
       },
       singleMarketConcentrationPct: 99.95,
       unrealizedToRealizedRatio: 2.23,
@@ -248,6 +249,7 @@ describe('formatTelegramRiskReport', () => {
             exitPnlAtBestBidAsk: 4.5,
             worstCaseLossToZero: 40,
             worstCaseLossToOne: null,
+            negativeExitThrottle: null,
           },
           {
             conditionId: 'market-3',
@@ -268,6 +270,7 @@ describe('formatTelegramRiskReport', () => {
             exitPnlAtBestBidAsk: 2,
             worstCaseLossToZero: null,
             worstCaseLossToOne: 17,
+            negativeExitThrottle: null,
           },
         ],
       },
@@ -382,6 +385,7 @@ describe('formatTelegramRiskReport', () => {
       exitPnlAtBestBidAsk: 0,
       worstCaseLossToZero: 0,
       worstCaseLossToOne: 0,
+      negativeExitThrottle: null,
     };
 
     const activeDecision: TelegramRiskReportInput['risk']['topMarketDecision'] = {
@@ -403,6 +407,7 @@ describe('formatTelegramRiskReport', () => {
       exitPnlAtBestBidAsk: 0.1,
       worstCaseLossToZero: 5,
       worstCaseLossToOne: null,
+      negativeExitThrottle: null,
     };
 
     // When filtering is applied by the runtime, only activeDecision should reach the formatter.

@@ -281,6 +281,14 @@ async function main() {
         side,
       });
 
+      // Combine with negative-exit throttle (whichever is tighter wins)
+      const negExit = riskDecision.negativeExitThrottle;
+      const effectiveThrottle = negExit ? {
+        ...inventoryThrottle,
+        sizeMultiplier: Math.min(inventoryThrottle.sizeMultiplier, negExit.sizeMultiplier),
+        extraHalfSpreadCents: Math.max(inventoryThrottle.extraHalfSpreadCents, negExit.extraHalfSpreadCents),
+      } : inventoryThrottle;
+
       const quoteResult = generateQuoteCandidate({
         conditionId: market.conditionId,
         tokenId: market.yesTokenId,
@@ -293,7 +301,7 @@ async function main() {
         inventoryPct,
         inventorySkewCents: inventorySkew,
         isBookStale: false,
-        inventoryThrottle,
+        inventoryThrottle: effectiveThrottle,
       });
 
       if (!quoteResult) {

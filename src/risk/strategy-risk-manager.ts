@@ -32,6 +32,11 @@ export interface StrategyRiskInput {
   killSwitchActive: boolean;
 }
 
+export interface NegativeExitThrottle {
+  sizeMultiplier: number;
+  extraHalfSpreadCents: number;
+}
+
 export interface MarketRiskDecision {
   conditionId: string;
   tokenId: string;
@@ -51,6 +56,7 @@ export interface MarketRiskDecision {
   exitPnlAtBestBidAsk: number | null;
   worstCaseLossToZero: number | null;
   worstCaseLossToOne: number | null;
+  negativeExitThrottle: NegativeExitThrottle | null;
 }
 
 const STATUS_RANK: Record<RiskStatus, number> = {
@@ -168,6 +174,24 @@ export class StrategyRiskManager {
       }
     }
 
+    // Throttle inventory-increasing side when exit is negative but not yet critical
+    let negativeExitThrottle: NegativeExitThrottle | null = null;
+    if (
+      hasOpenPosition &&
+      exitPnlAtBestBidAsk !== null &&
+      exitPnlAtBestBidAsk < negativeExitWarningUsd &&
+      exitPnlAtBestBidAsk > negativeExitCriticalUsd
+    ) {
+      // Scale throttle: at warning threshold → light, at critical threshold → heavy
+      const range = negativeExitWarningUsd - negativeExitCriticalUsd;
+      const depth = (negativeExitWarningUsd - exitPnlAtBestBidAsk) / range; // 0..1
+      if (depth >= 0.5) {
+        negativeExitThrottle = { sizeMultiplier: 0.25, extraHalfSpreadCents: 1.5 };
+      } else {
+        negativeExitThrottle = { sizeMultiplier: 0.5, extraHalfSpreadCents: 0.5 };
+      }
+    }
+
     return {
       conditionId: input.conditionId,
       tokenId: input.tokenId,
@@ -187,6 +211,7 @@ export class StrategyRiskManager {
       exitPnlAtBestBidAsk,
       worstCaseLossToZero: positionSide === 'LONG' && avgEntryPrice !== null ? absPosition * avgEntryPrice : null,
       worstCaseLossToOne: positionSide === 'SHORT' && avgEntryPrice !== null ? absPosition * (1 - avgEntryPrice) : null,
+      negativeExitThrottle,
     };
   }
 

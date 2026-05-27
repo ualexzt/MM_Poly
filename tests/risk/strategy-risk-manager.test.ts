@@ -396,4 +396,70 @@ describe('StrategyRiskManager', () => {
     expect(decision.allowBuy).toBe(true);
     expect(decision.allowSell).toBe(false);
   });
+
+  test('applies light throttle when exit is mildly negative (warning zone shallow)', () => {
+    const manager = new StrategyRiskManager(config);
+    // exit = 4 * (0.55 - 0.60) = -$0.20; depth = 0.20 < 0.5 → light throttle
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -4, avgCost: 0.55 }),
+      book: makeBook({ bestBid: 0.59, bestAsk: 0.60, spread: 0.01, spreadTicks: 1 }),
+      currentFair: 0.595,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-0.20);
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reasons).toContain('negative_executable_exit');
+    expect(decision.reduceOnly).toBe(false);
+    expect(decision.negativeExitThrottle).toEqual({ sizeMultiplier: 0.5, extraHalfSpreadCents: 0.5 });
+  });
+
+  test('applies heavy throttle when exit is deeply negative (warning zone deep)', () => {
+    const manager = new StrategyRiskManager(config);
+    // exit = 16 * (0.55 - 0.60) = -$0.80; depth = 0.80 >= 0.5 → heavy throttle
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -16, avgCost: 0.55 }),
+      book: makeBook({ bestBid: 0.59, bestAsk: 0.60, spread: 0.01, spreadTicks: 1 }),
+      currentFair: 0.595,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-0.80);
+    expect(decision.riskStatus).toBe('WARNING');
+    expect(decision.reasons).toContain('negative_executable_exit');
+    expect(decision.reduceOnly).toBe(false);
+    expect(decision.negativeExitThrottle).toEqual({ sizeMultiplier: 0.25, extraHalfSpreadCents: 1.5 });
+  });
+
+  test('no negative exit throttle when exit is positive', () => {
+    const manager = new StrategyRiskManager(config);
+    // exit = 4 * (0.55 - 0.50) = +$0.20 → positive, no throttle
+    const decision = manager.evaluateMarket({
+      mode: 'paper',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -4, avgCost: 0.55 }),
+      book: makeBook({ bestBid: 0.49, bestAsk: 0.50, spread: 0.01, spreadTicks: 1 }),
+      currentFair: 0.495,
+      primaryMarketQuoteSharePct: 50,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(0.20);
+    expect(decision.negativeExitThrottle).toBeNull();
+  });
 });
