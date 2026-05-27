@@ -94,7 +94,7 @@ Inventory Usage: ${formatNullablePct(top?.inventoryUsagePct ?? null)}
 Reduce-only: ${input.risk.reduceOnlyActive ? 'ON' : 'OFF'}
 
 ⚠️ <b>Risk</b>
-Market Concentration: ${formatNullablePct(input.risk.singleMarketConcentrationPct)}
+Quote Concentration: ${formatNullablePct(input.risk.singleMarketConcentrationPct)}
 Unrealized/Realized: ${input.risk.unrealizedToRealizedRatio !== null ? `${input.risk.unrealizedToRealizedRatio.toFixed(2)}x` : 'n/a'}
 ${worstCase}
 Kill Switch: ${input.risk.killSwitchActive ? 'ON' : 'OFF'}
