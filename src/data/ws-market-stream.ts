@@ -111,6 +111,8 @@ export class WsMarketStream {
       for (const change of msg.price_changes) {
         const bestBid = change.best_bid != null ? parseFloat(change.best_bid) : null;
         const bestAsk = change.best_ask != null ? parseFloat(change.best_ask) : null;
+        // Skip crossed or invalid book updates (bid/ask arrive independently)
+        if (bestBid !== null && bestAsk !== null && bestBid >= bestAsk) continue;
         const midpoint = bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : null;
         const spread = bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
         this.onUpdate({
