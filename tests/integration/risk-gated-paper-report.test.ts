@@ -109,7 +109,7 @@ describe('risk-gated paper report integration', () => {
     expect(text).not.toContain('Total Trades');
   });
 
-  test('negative executable exit appears as warning action in paper report', () => {
+  test('negative executable exit appears as critical action in paper report', () => {
     const activityTracker = new TradingActivityTracker();
     const riskManager = new StrategyRiskManager({
       softInventoryLimitPct: 25,
@@ -120,7 +120,7 @@ describe('risk-gated paper report integration', () => {
       concentrationCriticalPctLive: 90,
       maxBookSpreadCents: 8,
       negativeExitWarningUsd: 0,
-      negativeExitCriticalUsd: -1,
+      negativeExitCriticalUsd: -0.25,
     });
 
     activityTracker.recordQuoteGenerated('market-1');
@@ -153,6 +153,13 @@ describe('risk-gated paper report integration', () => {
       killSwitchActive: false,
     });
 
+    // exit PnL = 2 * (0.65 - 0.99) = -$0.68 < -$0.25 → CRITICAL + reduce-only
+    expect(decision.riskStatus).toBe('CRITICAL');
+    expect(decision.reasons).toContain('severe_negative_executable_exit');
+    expect(decision.reduceOnly).toBe(true);
+    expect(decision.allowBuy).toBe(true);
+    expect(decision.allowSell).toBe(false);
+
     const text = formatTelegramRiskReport({
       mode: 'paper',
       startedAt: new Date('2026-05-24T00:00:00Z'),
@@ -182,8 +189,8 @@ describe('risk-gated paper report integration', () => {
       marketTitleByConditionId: new Map([['market-1', 'Wide Book Test Market']]),
     });
 
-    expect(text).toContain('Status: WARNING');
-    expect(text).toContain('negative_executable_exit');
+    expect(text).toContain('Status: CRITICAL');
+    expect(text).toContain('severe_negative_executable_exit');
     expect(text).toContain('wide_book_spread');
     expect(text).toContain('Exit at Bid/Ask: -$0.68');
     expect(text).toContain('Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.');
