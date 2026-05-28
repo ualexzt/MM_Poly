@@ -13,6 +13,12 @@ export interface EnvConfig {
   dailyReportHour: number;
   dailyReportMinute: number;
   maxMarkets: number;
+  privateKey?: string;
+  clobApiKey?: string;
+  clobApiSecret?: string;
+  clobApiPassphrase?: string;
+  relayerApiKey?: string;
+  relayerApiKeyAddress?: string;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -53,4 +59,10 @@ export const env: EnvConfig = {
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
   dailyReportMinute: getEnvInt('DAILY_REPORT_MINUTE', 0),
   maxMarkets: getEnvInt('MAX_MARKETS', 20),
+  privateKey: process.env.PRIVATE_KEY,
+  clobApiKey: process.env.CLOB_API_KEY,
+  clobApiSecret: process.env.CLOB_API_SECRET,
+  clobApiPassphrase: process.env.CLOB_API_PASSPHRASE,
+  relayerApiKey: process.env.RELAYER_API_KEY,
+  relayerApiKeyAddress: process.env.RELAYER_API_KEY_ADDRESS,
 };
