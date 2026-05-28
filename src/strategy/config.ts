@@ -60,7 +60,7 @@ export const defaultConfig: StrategyConfig = {
     cooldownAfterCancelSeconds: 30
   },
   risk: {
-    maxDailyDrawdownPct: 2, maxStrategyDrawdownPct: 5,
+    maxDailyDrawdownPct: 2, maxDailyDrawdownUsd: 5, maxStrategyDrawdownPct: 5,
     maxConsecutiveAdverseFills: 4,
     cancelAllOnWsDisconnectSeconds: 3,
     cancelAllOnApiErrorRatePct: 20,

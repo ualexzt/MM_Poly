@@ -14,6 +14,7 @@ export interface ApiErrorWindow {
 
 export interface Drawdown {
   currentDrawdownPct: number;
+  currentDrawdownUsd?: number;
 }
 
 export interface KillSwitchCheckResult {
@@ -55,6 +56,11 @@ export class KillSwitch {
     // Daily drawdown (§13.2)
     if (this.config.maxDailyDrawdownPct != null &&
         drawdown.currentDrawdownPct >= this.config.maxDailyDrawdownPct) {
+      return 'DISABLE_STRATEGY';
+    }
+    if (this.config.maxDailyDrawdownUsd != null &&
+        drawdown.currentDrawdownUsd != null &&
+        drawdown.currentDrawdownUsd >= this.config.maxDailyDrawdownUsd) {
       return 'DISABLE_STRATEGY';
     }
 

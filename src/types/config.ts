@@ -67,6 +67,7 @@ export interface ToxicityConfig {
 
 export interface RiskConfig {
   maxDailyDrawdownPct: number;
+  maxDailyDrawdownUsd: number;
   maxStrategyDrawdownPct: number;
   maxConsecutiveAdverseFills: number;
   cancelAllOnWsDisconnectSeconds: number;
