@@ -10,7 +10,7 @@
     "test:coverage": "jest --coverage",
     "start:paper": "tsx src/run-paper.ts",
     "start:shadow": "tsx src/run-shadow.ts",
-    "start:live": "tsx src/run-live.ts",
+    "start:live": "tsx src/run-small-live.ts",
     "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts"
   },
   "dependencies": {
