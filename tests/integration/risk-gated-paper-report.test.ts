@@ -194,5 +194,6 @@ describe('risk-gated paper report integration', () => {
     expect(text).toContain('wide_book_spread');
     expect(text).toContain('Exit at Bid/Ask: -$0.68');
     expect(text).toContain('Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.');
+    expect(text).toContain('Do not enable LIVE before the paper soak clears severe executable-exit risk.');
   });
 });

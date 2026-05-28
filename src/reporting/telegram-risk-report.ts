@@ -280,9 +280,13 @@ function formatAction(mode: StrategyMode, status: RiskStatus, reasons: string[])
     reasons.includes('severe_negative_executable_exit') ||
     reasons.includes('invalid_book_crossed_or_missing')
   ) {
-    return mode === 'paper'
-      ? 'Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.'
-      : 'Executable liquidity risk active. Reduce exposure and inspect affected markets.';
+    if (mode === 'paper') {
+      const base = 'Stay PAPER. Investigate wide-book or executable-exit risk before considering LIVE.';
+      return reasons.includes('severe_negative_executable_exit')
+        ? `${base} Do not enable LIVE before the paper soak clears severe executable-exit risk.`
+        : base;
+    }
+    return 'Executable liquidity risk active. Reduce exposure and inspect affected markets.';
   }
 
   if (status === 'OK') {
