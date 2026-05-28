@@ -23,14 +23,14 @@ export const defaultConfig: StrategyConfig = {
     rewardTighteningMaxCents: 0.5
   },
   size: {
-    baseOrderSizeUsd: 1, maxOrderSizeUsd: 2.5,
+    baseOrderSizeUsd: 1, maxOrderSizeUsd: 1.5,
     minSizeMultiplierOverExchangeMin: 1.2,
     respectRewardMinIncentiveSize: true
   },
   inventory: {
-    maxMarketExposureUsd: 10, maxEventExposureUsd: 25,
-    maxTotalStrategyExposureUsd: 100,
-    softLimitPct: 25, reduceOnlyLimitPct: 50, hardLimitPct: 75,
+    maxMarketExposureUsd: 3, maxEventExposureUsd: 10,
+    maxTotalStrategyExposureUsd: 25,
+    softLimitPct: 15, reduceOnlyLimitPct: 35, hardLimitPct: 50,
     maxSkewCents: 4.5, skewSensitivity: 0.70,
     throttleProfiles: {
       paper: {
@@ -42,11 +42,11 @@ export const defaultConfig: StrategyConfig = {
         ],
       },
       small_live: {
-        reduceOnlyThresholdPct: 45,
+        reduceOnlyThresholdPct: 35,
         tiers: [
-          { startPct: 20, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
-          { startPct: 30, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
-          { startPct: 40, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
+          { startPct: 15, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
+          { startPct: 25, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
+          { startPct: 35, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
         ],
       },
     }

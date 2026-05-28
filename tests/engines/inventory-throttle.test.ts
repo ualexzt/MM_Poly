@@ -15,11 +15,11 @@ const paperProfile: InventoryThrottleProfile = {
 };
 
 const smallLiveProfile: InventoryThrottleProfile = {
-  reduceOnlyThresholdPct: 45,
+  reduceOnlyThresholdPct: 35,
   tiers: [
-    { startPct: 20, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
-    { startPct: 30, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
-    { startPct: 40, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
+    { startPct: 15, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
+    { startPct: 25, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
+    { startPct: 35, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
   ],
 };
 
@@ -29,7 +29,14 @@ const profiles = {
 };
 
 describe('inventory-throttle', () => {
-  test('default config exposes paper and small_live throttle profiles', () => {
+  test('default config exposes $30 guarded small_live sizing and throttle profile', () => {
+    expect(defaultConfig.size.baseOrderSizeUsd).toBe(1);
+    expect(defaultConfig.size.maxOrderSizeUsd).toBe(1.5);
+
+    expect(defaultConfig.inventory.maxMarketExposureUsd).toBe(3);
+    expect(defaultConfig.inventory.maxEventExposureUsd).toBe(10);
+    expect(defaultConfig.inventory.maxTotalStrategyExposureUsd).toBe(25);
+
     expect(defaultConfig.inventory.throttleProfiles.paper.reduceOnlyThresholdPct).toBe(50);
     expect(defaultConfig.inventory.throttleProfiles.paper.tiers).toEqual([
       { startPct: 25, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.5 },
@@ -37,11 +44,11 @@ describe('inventory-throttle', () => {
       { startPct: 45, sizeMultiplier: 0.05, extraHalfSpreadCents: 3.0, blockNewInventory: true },
     ]);
 
-    expect(defaultConfig.inventory.throttleProfiles.small_live.reduceOnlyThresholdPct).toBe(45);
+    expect(defaultConfig.inventory.throttleProfiles.small_live.reduceOnlyThresholdPct).toBe(35);
     expect(defaultConfig.inventory.throttleProfiles.small_live.tiers).toEqual([
-      { startPct: 20, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
-      { startPct: 30, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
-      { startPct: 40, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
+      { startPct: 15, sizeMultiplier: 0.5, extraHalfSpreadCents: 0.75 },
+      { startPct: 25, sizeMultiplier: 0.2, extraHalfSpreadCents: 2.0 },
+      { startPct: 35, sizeMultiplier: 0.05, extraHalfSpreadCents: 4.0, blockNewInventory: true },
     ]);
   });
 
@@ -95,26 +102,22 @@ describe('inventory-throttle', () => {
     });
   });
 
-  test('applies stricter small_live tiers at 20, 30, 40, and 45 percent', () => {
-    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 20, side: 'BUY' })).toMatchObject({
+  test('applies stricter small_live tiers at 15, 25, and 35 percent', () => {
+    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 15, side: 'BUY' })).toMatchObject({
       sizeMultiplier: 0.5,
       extraHalfSpreadCents: 0.75,
       blocked: false,
       reduceOnly: false,
     });
-    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 30, side: 'BUY' })).toMatchObject({
+    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 25, side: 'BUY' })).toMatchObject({
       sizeMultiplier: 0.2,
       extraHalfSpreadCents: 2.0,
       blocked: false,
       reduceOnly: false,
     });
-    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 40, side: 'BUY' })).toMatchObject({
+    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 35, side: 'BUY' })).toMatchObject({
       sizeMultiplier: 0.05,
       extraHalfSpreadCents: 4.0,
-      blocked: true,
-      reduceOnly: false,
-    });
-    expect(computeInventoryThrottle({ mode: 'small_live', profiles, netPosition: 10, inventoryUsagePct: 45, side: 'BUY' })).toMatchObject({
       blocked: true,
       reduceOnly: true,
     });
