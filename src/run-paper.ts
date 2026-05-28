@@ -79,7 +79,7 @@ async function main() {
     concentrationCriticalPctLive: 90,
     maxBookSpreadCents: config.marketFilter.maxSpreadCents,
     negativeExitWarningUsd: 0,
-    negativeExitCriticalUsd: -0.25,
+    negativeExitCriticalUsd: -0.15,
     throttleProfiles: config.inventory.throttleProfiles,
   });
 

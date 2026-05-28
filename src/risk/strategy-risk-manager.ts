@@ -162,6 +162,13 @@ export class StrategyRiskManager {
 
     if (hasOpenPosition && exitPnlAtBestBidAsk !== null && exitPnlAtBestBidAsk < negativeExitWarningUsd) {
       reasons.push('negative_executable_exit');
+      if (input.mode === 'small_live') {
+        if (netPosition < 0) {
+          allowSell = false;
+        } else if (netPosition > 0) {
+          allowBuy = false;
+        }
+      }
     }
 
     if (hasOpenPosition && exitPnlAtBestBidAsk !== null && exitPnlAtBestBidAsk <= negativeExitCriticalUsd) {

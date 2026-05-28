@@ -351,6 +351,61 @@ describe('StrategyRiskManager', () => {
     expect(decision.allowSell).toBe(true);
   });
 
+  test('small_live blocks inventory-increasing BUY for long position on any negative executable exit', () => {
+    const manager = new StrategyRiskManager({
+      ...config,
+      negativeExitWarningUsd: 0,
+      negativeExitCriticalUsd: -0.15,
+    });
+
+    const decision = manager.evaluateMarket({
+      mode: 'small_live',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: 2, avgCost: 0.58 }),
+      book: makeBook({ bestBid: 0.55, bestAsk: 0.56 }),
+      currentFair: 0.57,
+      primaryMarketQuoteSharePct: 10,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-0.06);
+    expect(decision.reasons).toContain('negative_executable_exit');
+    expect(decision.allowBuy).toBe(false);
+    expect(decision.allowSell).toBe(true);
+    expect(decision.riskStatus).toBe('WARNING');
+  });
+
+  test('small_live escalates severe negative executable exit at fifteen cents', () => {
+    const manager = new StrategyRiskManager({
+      ...config,
+      negativeExitWarningUsd: 0,
+      negativeExitCriticalUsd: -0.15,
+    });
+
+    const decision = manager.evaluateMarket({
+      mode: 'small_live',
+      conditionId: 'market-1',
+      tokenId: 'token-yes',
+      position: makePosition({ netSize: -2, avgCost: 0.55 }),
+      book: makeBook({ bestBid: 0.61, bestAsk: 0.64 }),
+      currentFair: 0.60,
+      primaryMarketQuoteSharePct: 10,
+      hasActiveQuotes: true,
+      isBookStale: false,
+      killSwitchActive: false,
+    });
+
+    expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(-0.18);
+    expect(decision.reasons).toContain('severe_negative_executable_exit');
+    expect(decision.allowSell).toBe(false);
+    expect(decision.allowBuy).toBe(true);
+    expect(decision.reduceOnly).toBe(true);
+    expect(decision.riskStatus).toBe('CRITICAL');
+  });
+
   test('blocks both sides and warns on crossed book', () => {
     const manager = new StrategyRiskManager(config);
 
