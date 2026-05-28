@@ -409,6 +409,22 @@ describe('StrategyRiskManager', () => {
   test('blocks both sides and warns on crossed book', () => {
     const manager = new StrategyRiskManager(config);
 
+    // Need 3 consecutive invalid ticks for debounce
+    for (let i = 0; i < 2; i++) {
+      manager.evaluateMarket({
+        mode: 'paper',
+        conditionId: 'market-1',
+        tokenId: 'token-yes',
+        position: makePosition({ netSize: 1, avgCost: 0.50 }),
+        book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+        currentFair: 0.55,
+        primaryMarketQuoteSharePct: 50,
+        hasActiveQuotes: true,
+        isBookStale: false,
+        killSwitchActive: false,
+      });
+    }
+
     const decision = manager.evaluateMarket({
       mode: 'paper',
       conditionId: 'market-1',
@@ -516,5 +532,73 @@ describe('StrategyRiskManager', () => {
 
     expect(decision.exitPnlAtBestBidAsk).toBeCloseTo(0.20);
     expect(decision.negativeExitThrottle).toBeNull();
+  });
+
+  test('does not warn on first invalid book tick — debounce requires 3 consecutive invalid ticks', () => {
+    const manager = new StrategyRiskManager(config);
+
+    // 1st invalid tick
+    const d1 = manager.evaluateMarket({
+      mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+      currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+    });
+    expect(d1.reasons).not.toContain('invalid_book_crossed_or_missing');
+    expect(d1.allowBuy).toBe(true);
+    expect(d1.allowSell).toBe(true);
+
+    // 2nd invalid tick
+    const d2 = manager.evaluateMarket({
+      mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+      currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+    });
+    expect(d2.reasons).not.toContain('invalid_book_crossed_or_missing');
+
+    // 3rd invalid tick
+    const d3 = manager.evaluateMarket({
+      mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+      currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+    });
+    expect(d3.reasons).toContain('invalid_book_crossed_or_missing');
+    expect(d3.allowBuy).toBe(false);
+    expect(d3.allowSell).toBe(false);
+    expect(d3.riskStatus).toBe('WARNING');
+  });
+
+  test('resets invalid book debounce when book becomes valid', () => {
+    const manager = new StrategyRiskManager(config);
+
+    // 3 invalid ticks to trigger
+    for (let i = 0; i < 3; i++) {
+      manager.evaluateMarket({
+        mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+        position: makePosition({ netSize: 1, avgCost: 0.50 }),
+        book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+        currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+      });
+    }
+
+    // Valid tick resets
+    const dValid = manager.evaluateMarket({
+      mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook(),
+      currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+    });
+    expect(dValid.reasons).not.toContain('invalid_book_crossed_or_missing');
+
+    // Next invalid tick starts from 0 again
+    const dAfter = manager.evaluateMarket({
+      mode: 'paper', conditionId: 'market-1', tokenId: 'token-yes',
+      position: makePosition({ netSize: 1, avgCost: 0.50 }),
+      book: makeBook({ bestBid: 0.60, bestAsk: 0.59, spread: -0.01, spreadTicks: -1 }),
+      currentFair: 0.55, primaryMarketQuoteSharePct: 10, hasActiveQuotes: true, isBookStale: false, killSwitchActive: false,
+    });
+    expect(dAfter.reasons).not.toContain('invalid_book_crossed_or_missing');
   });
 });

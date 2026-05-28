@@ -74,6 +74,9 @@ export function maxRiskStatus(statuses: RiskStatus[]): RiskStatus {
 }
 
 export class StrategyRiskManager {
+  private invalidBookConsecutiveCounts = new Map<string, number>();
+  private readonly INVALID_BOOK_DEBOUNCE_THRESHOLD = 3;
+
   constructor(private config: StrategyRiskConfig) {}
 
   private getReduceOnlyLimitPct(mode: StrategyMode): number {
@@ -145,11 +148,17 @@ export class StrategyRiskManager {
     const bestBid = input.book?.bestBid ?? null;
     const bestAsk = input.book?.bestAsk ?? null;
 
-    if (bestBid === null || bestAsk === null || bestBid <= 0 || bestAsk <= 0 || bestBid >= bestAsk) {
-      allowBuy = false;
-      allowSell = false;
-      reasons.push('invalid_book_crossed_or_missing');
+    const isBookInvalid = bestBid === null || bestAsk === null || bestBid <= 0 || bestAsk <= 0 || bestBid >= bestAsk;
+    if (isBookInvalid) {
+      const count = (this.invalidBookConsecutiveCounts.get(input.conditionId) ?? 0) + 1;
+      this.invalidBookConsecutiveCounts.set(input.conditionId, count);
+      if (count >= this.INVALID_BOOK_DEBOUNCE_THRESHOLD) {
+        allowBuy = false;
+        allowSell = false;
+        reasons.push('invalid_book_crossed_or_missing');
+      }
     } else {
+      this.invalidBookConsecutiveCounts.set(input.conditionId, 0);
       const spreadCents = (bestAsk - bestBid) * 100;
       const maxBookSpreadCents = this.config.maxBookSpreadCents ?? 8;
       if (spreadCents > maxBookSpreadCents) {
