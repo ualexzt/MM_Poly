@@ -36,6 +36,9 @@ describe('inventory-throttle', () => {
     expect(defaultConfig.inventory.maxMarketExposureUsd).toBe(3);
     expect(defaultConfig.inventory.maxEventExposureUsd).toBe(10);
     expect(defaultConfig.inventory.maxTotalStrategyExposureUsd).toBe(25);
+    expect(defaultConfig.inventory.softLimitPct).toBe(15);
+    expect(defaultConfig.inventory.reduceOnlyLimitPct).toBe(35);
+    expect(defaultConfig.inventory.hardLimitPct).toBe(50);
 
     expect(defaultConfig.inventory.throttleProfiles.paper.reduceOnlyThresholdPct).toBe(50);
     expect(defaultConfig.inventory.throttleProfiles.paper.tiers).toEqual([
