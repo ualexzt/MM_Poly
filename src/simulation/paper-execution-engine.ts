@@ -23,18 +23,28 @@ export interface FillEvent {
   remainingSize: number;
 }
 
+export interface PaperExecutionConfig {
+  queueAheadSize: number;
+  fillFractionAfterQueue: number;
+}
+
 export class PaperExecutionEngine {
   private orders: Map<string, PaperOrder> = new Map();
   private filledSizes: Map<string, number> = new Map();
+  private crossedTradeSizes: Map<string, number> = new Map();
+
+  constructor(private config: PaperExecutionConfig | null = null) {}
 
   submit(order: PaperOrder): void {
     this.orders.set(order.id, order);
     this.filledSizes.set(order.id, 0);
+    this.crossedTradeSizes.set(order.id, 0);
   }
 
   cancel(orderId: string): void {
     this.orders.delete(orderId);
     this.filledSizes.delete(orderId);
+    this.crossedTradeSizes.delete(orderId);
   }
 
   cancelByTokenId(tokenId: string): void {
@@ -42,6 +52,7 @@ export class PaperExecutionEngine {
       if (order.tokenId === tokenId) {
         this.orders.delete(id);
         this.filledSizes.delete(id);
+        this.crossedTradeSizes.delete(id);
       }
     }
   }
@@ -62,12 +73,19 @@ export class PaperExecutionEngine {
       }
 
       if (shouldFill) {
-        const fillSize = Math.min(remaining, trade.size);
+        const fillSize = this.computeFillSize(orderId, remaining, trade.size);
+        if (fillSize <= 0) continue;
+
         this.filledSizes.set(orderId, alreadyFilled + fillSize);
         fills.push({
           orderId, tokenId: order.tokenId, side: order.side,
           filledPrice: trade.price, filledSize: fillSize, remainingSize: remaining - fillSize
         });
+        if (alreadyFilled + fillSize >= order.size) {
+          this.orders.delete(orderId);
+          this.filledSizes.delete(orderId);
+          this.crossedTradeSizes.delete(orderId);
+        }
       }
     }
     return fills;
@@ -75,5 +93,20 @@ export class PaperExecutionEngine {
 
   getOpenOrders(): PaperOrder[] {
     return Array.from(this.orders.values());
+  }
+
+  private computeFillSize(orderId: string, remaining: number, tradeSize: number): number {
+    if (!this.config) return Math.min(remaining, tradeSize);
+
+    const previousCrossedSize = this.crossedTradeSizes.get(orderId) ?? 0;
+    const totalCrossedSize = previousCrossedSize + tradeSize;
+    this.crossedTradeSizes.set(orderId, totalCrossedSize);
+
+    const fillableCrossedSize = Math.max(0, totalCrossedSize - this.config.queueAheadSize);
+    const previousFillableCrossedSize = Math.max(0, previousCrossedSize - this.config.queueAheadSize);
+    const newlyFillableSize = fillableCrossedSize - previousFillableCrossedSize;
+    const conservativeFillSize = newlyFillableSize * this.config.fillFractionAfterQueue;
+
+    return Math.min(remaining, conservativeFillSize);
   }
 }

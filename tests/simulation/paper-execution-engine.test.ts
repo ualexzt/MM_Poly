@@ -29,6 +29,30 @@ describe('paper-execution-engine', () => {
     expect(fills[0].remainingSize).toBe(7);
   });
 
+  test('conservative mode requires trade volume to clear queue before filling', () => {
+    const engine = new PaperExecutionEngine({ queueAheadSize: 5, fillFractionAfterQueue: 0.5 });
+    engine.submit({ id: 'o-conservative', tokenId: 'yes1', side: 'BUY', price: 0.48, size: 10, sizeUsd: 4.8, postOnly: true });
+
+    expect(engine.onTrade({ tokenId: 'yes1', price: 0.48, size: 3 })).toHaveLength(0);
+
+    const fills = engine.onTrade({ tokenId: 'yes1', price: 0.48, size: 5 });
+
+    expect(fills).toHaveLength(1);
+    expect(fills[0].filledSize).toBe(1.5);
+    expect(fills[0].remainingSize).toBe(8.5);
+  });
+
+  test('default mode preserves existing crossing-fill behavior', () => {
+    const engine = new PaperExecutionEngine();
+    engine.submit({ id: 'o-default', tokenId: 'yes1', side: 'BUY', price: 0.48, size: 10, sizeUsd: 4.8, postOnly: true });
+
+    const fills = engine.onTrade({ tokenId: 'yes1', price: 0.48, size: 3 });
+
+    expect(fills).toHaveLength(1);
+    expect(fills[0].filledSize).toBe(3);
+    expect(fills[0].remainingSize).toBe(7);
+  });
+
   test('cancel removes order', () => {
     const engine = new PaperExecutionEngine();
     engine.submit({ id: 'o4', tokenId: 'yes1', side: 'BUY', price: 0.48, size: 10, sizeUsd: 4.8, postOnly: true });

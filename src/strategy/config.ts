@@ -67,6 +67,10 @@ export const defaultConfig: StrategyConfig = {
     cancelAllOnTickSizeChange: true,
     disableNearResolutionMinutes: 30
   },
+  paperExecution: {
+    queueAheadSize: 5,
+    fillFractionAfterQueue: 0.5,
+  },
   refreshIntervalMs: 1000,
   staleOrderMaxAgeMs: 2500,
   minQuoteLifetimeMs: 500,

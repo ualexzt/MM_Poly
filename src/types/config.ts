@@ -76,6 +76,11 @@ export interface RiskConfig {
   disableNearResolutionMinutes: number;
 }
 
+export interface PaperExecutionConfig {
+  queueAheadSize: number;
+  fillFractionAfterQueue: number;
+}
+
 export interface StrategyConfig {
   mode: 'paper' | 'shadow' | 'small_live' | 'disabled';
   liveTradingEnabled: boolean;
@@ -89,6 +94,7 @@ export interface StrategyConfig {
   inventory: InventoryConfig;
   toxicity: ToxicityConfig;
   risk: RiskConfig;
+  paperExecution: PaperExecutionConfig;
   refreshIntervalMs: number;
   staleOrderMaxAgeMs: number;
   minQuoteLifetimeMs: number;

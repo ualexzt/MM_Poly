@@ -43,7 +43,7 @@ async function main() {
   const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
   const scanner = new GammaApiScanner();
   const bookClient = new ClobApiClient();
-  const paperEngine = new PaperExecutionEngine();
+  const paperEngine = new PaperExecutionEngine(defaultConfig.paperExecution);
   const pnlTracker = new PaperPnlTracker();
   const startedAt = new Date();
   let warningsCount = 0;
