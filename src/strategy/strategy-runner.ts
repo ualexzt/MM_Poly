@@ -348,7 +348,7 @@ export class StrategyRunner {
       if (!exposureAllowed) continue;
 
       // §11.2 — Route through cancel-replace
-      const routeResult = this.orderRouter.route(
+      const routeResult = await this.orderRouter.route(
         candidate,
         yesBook,
         slot.orderId,

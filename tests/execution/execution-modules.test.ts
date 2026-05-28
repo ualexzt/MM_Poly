@@ -2,6 +2,8 @@ import { checkPostOnly, validateOrderPreSubmit } from '../../src/execution/post-
 import { CancelReplaceEngine } from '../../src/execution/cancel-replace-engine';
 import { OpenOrderReconciler } from '../../src/execution/open-order-reconciler';
 import { PaperExecutionEngine } from '../../src/simulation/paper-execution-engine';
+import { LiveOrderSubmitter } from '../../src/execution/live-order-submitter';
+import { OrderRouter } from '../../src/execution/order-router';
 import { QuoteCandidate } from '../../src/types/quote';
 import { BookState } from '../../src/types/book';
 
@@ -90,6 +92,82 @@ describe('execution tests', () => {
       expect(result.toCancel).toContain('o2');
       expect(result.toSubmit.length).toBe(1);
       expect(result.toSubmit[0].price).toBe(0.55);
+    });
+  });
+
+  describe('order-router small_live', () => {
+    test('returns not_configured when liveSubmitter is null', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: true });
+
+      const quote: QuoteCandidate = {
+        conditionId: 'c1', tokenId: 'yes1', side: 'BUY', price: 0.45, size: 10, sizeUsd: 4.5,
+        postOnly: true, orderType: 'GTC', fairPrice: 0.50, targetHalfSpreadCents: 5,
+        inventorySkewCents: 0, toxicityScore: 0, reason: 'test', riskFlags: []
+      };
+
+      const book: BookState = {
+        tokenId: 'yes1', conditionId: 'c1',
+        bids: [], asks: [],
+        bestBid: 0.45, bestAsk: 0.55,
+        bestBidSizeUsd: 100, bestAskSizeUsd: 100,
+        midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+        depth1Usd: 100, depth3Usd: 500,
+        tickSize: 0.01, minOrderSize: 5,
+        lastUpdateMs: Date.now()
+      };
+
+      const result = await router.route(quote, book, null, {
+        exposureAllowed: true,
+        sellInventoryAvailable: true,
+        killSwitchActive: false,
+      });
+
+      expect(result.submitted).toBe(false);
+      expect(result.reason).toBe('live_submitter_not_configured');
+    });
+
+    test('submits live order when configured', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const mockClient = {
+        createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'live-123' }),
+        cancelOrder: jest.fn().mockResolvedValue({}),
+        getOpenOrders: jest.fn().mockResolvedValue([]),
+      };
+      const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: true }, liveSubmitter);
+
+      const quote: QuoteCandidate = {
+        conditionId: 'c1', tokenId: 'yes1', side: 'BUY', price: 0.45, size: 10, sizeUsd: 4.5,
+        postOnly: true, orderType: 'GTC', fairPrice: 0.50, targetHalfSpreadCents: 5,
+        inventorySkewCents: 0, toxicityScore: 0, reason: 'test', riskFlags: []
+      };
+
+      const book: BookState = {
+        tokenId: 'yes1', conditionId: 'c1',
+        bids: [], asks: [],
+        bestBid: 0.45, bestAsk: 0.55,
+        bestBidSizeUsd: 100, bestAskSizeUsd: 100,
+        midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+        depth1Usd: 100, depth3Usd: 500,
+        tickSize: 0.01, minOrderSize: 5,
+        lastUpdateMs: Date.now()
+      };
+
+      const result = await router.route(quote, book, null, {
+        exposureAllowed: true,
+        sellInventoryAvailable: true,
+        killSwitchActive: false,
+      });
+
+      expect(result.submitted).toBe(true);
+      expect(result.orderId).toBe('live-123');
+      expect(result.reason).toBe('live_submitted');
+      expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: 0.45, size: 10 }),
+        expect.anything(),
+        'GTC'
+      );
     });
   });
 });

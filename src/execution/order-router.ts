@@ -1,4 +1,5 @@
 import { PaperExecutionEngine } from '../simulation/paper-execution-engine';
+import { LiveOrderSubmitter } from './live-order-submitter';
 import { QuoteCandidate } from '../types/quote';
 import { BookState } from '../types/book';
 import { checkPostOnly, validateOrderPreSubmit } from './post-only-guard';
@@ -25,7 +26,8 @@ export class OrderRouter {
 
   constructor(
     private engine: PaperExecutionEngine,
-    private config: OrderRouterConfig
+    private config: OrderRouterConfig,
+    private liveSubmitter: LiveOrderSubmitter | null = null
   ) {
     this.cancelReplace = new CancelReplaceEngine(engine);
   }
@@ -34,7 +36,7 @@ export class OrderRouter {
    * Route a validated quote candidate.
    * @param existingOrderId - orderId to cancel-replace (null = new order)
    */
-  route(
+  async route(
     quote: QuoteCandidate,
     book: BookState,
     existingOrderId: string | null,
@@ -43,7 +45,7 @@ export class OrderRouter {
       sellInventoryAvailable: boolean;
       killSwitchActive: boolean;
     }
-  ): RouteResult {
+  ): Promise<RouteResult> {
     // §12.2 pre-submit validation
     const validation = validateOrderPreSubmit({
       quote,
@@ -64,7 +66,7 @@ export class OrderRouter {
       return { submitted: false, reason: 'shadow_mode_no_submit' };
     }
 
-    // Paper / small_live routing
+    // Paper routing
     if (this.config.mode === 'paper') {
       // Adjust price if needed for post-only safety
       const postOnly = checkPostOnly(quote, book);
@@ -88,6 +90,37 @@ export class OrderRouter {
       }
 
       return { submitted: true, orderId: newId, reason: 'paper_submitted' };
+    }
+
+    // Live / small_live routing
+    if (this.config.mode === 'small_live') {
+      if (!this.liveSubmitter) {
+        return { submitted: false, reason: 'live_submitter_not_configured' };
+      }
+
+      // For live mode, post-only safety is enforced by the exchange,
+      // but we still validate to avoid unnecessary rejects
+      const postOnly = checkPostOnly(quote, book);
+      if (!postOnly.safe) {
+        return { submitted: false, reason: 'post_only_unsafe' };
+      }
+
+      try {
+        // Cancel existing live order before placing new one
+        if (existingOrderId) {
+          await this.liveSubmitter.cancel(existingOrderId);
+        }
+
+        const orderId = await this.liveSubmitter.submit(quote, {
+          tickSize: book.tickSize,
+          negRisk: false, // TODO: detect from market metadata
+        });
+
+        return { submitted: true, orderId, reason: 'live_submitted' };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        return { submitted: false, reason: `live_error:${message}` };
+      }
     }
 
     return { submitted: false, reason: `unsupported_mode:${this.config.mode}` };
