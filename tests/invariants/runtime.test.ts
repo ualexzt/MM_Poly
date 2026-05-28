@@ -18,4 +18,12 @@ describe('runtime invariants', () => {
   test('max quote lifetime >= min quote lifetime', () => {
     expect(defaultConfig.maxQuoteLifetimeMs).toBeGreaterThanOrEqual(defaultConfig.minQuoteLifetimeMs);
   });
+
+  test('$30 guarded defaults are safe', () => {
+    expect(defaultConfig.inventory.maxTotalStrategyExposureUsd).toBeLessThanOrEqual(25);
+    expect(defaultConfig.inventory.maxMarketExposureUsd).toBeLessThanOrEqual(3);
+    expect(defaultConfig.size.baseOrderSizeUsd).toBeLessThanOrEqual(1);
+    expect(defaultConfig.size.maxOrderSizeUsd).toBeLessThanOrEqual(1.5);
+    expect(defaultConfig.risk.maxDailyDrawdownUsd).toBeLessThanOrEqual(5);
+  });
 });

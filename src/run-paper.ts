@@ -17,6 +17,7 @@ import { createTrace } from './accounting/decision-trace';
 import { isBookStale } from './risk/stale-book-guard';
 import { MarketRiskDecision, maxRiskStatus, RiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
 import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/telegram-risk-report';
+import { KillSwitch } from './risk/kill-switch';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 
@@ -62,7 +63,7 @@ async function main() {
     },
     inventory: {
       ...defaultConfig.inventory,
-      maxTotalStrategyExposureUsd: env.maxExposureUsd,
+      maxTotalStrategyExposureUsd: Math.min(env.maxExposureUsd, defaultConfig.inventory.maxTotalStrategyExposureUsd),
     },
     risk: {
       ...defaultConfig.risk,
@@ -82,6 +83,20 @@ async function main() {
     negativeExitCriticalUsd: -0.15,
     throttleProfiles: config.inventory.throttleProfiles,
   });
+  const killSwitch = new KillSwitch(config.risk);
+  let sessionMinPnl = 0;
+
+  function computeCurrentDrawdownUsd(): number {
+    const fairPrices = new Map<string, number>();
+    for (const [tokenId, book] of books) {
+      if (book.midpoint !== null) fairPrices.set(tokenId, book.midpoint);
+    }
+    const realized = pnlTracker.getCumulativeRealizedPnl();
+    const unrealized = pnlTracker.computeUnrealizedPnl(fairPrices);
+    const totalPnl = realized + unrealized;
+    sessionMinPnl = Math.min(sessionMinPnl, totalPnl);
+    return Math.max(0, -sessionMinPnl);
+  }
 
   logger.info('=== Polymarket MM Strategy — Paper Trading ===');
   logger.info(`Mode: ${env.mode}`);
@@ -167,6 +182,24 @@ async function main() {
   }
 
   function evaluateMarket(market: MarketState, tradePrice?: number) {
+    // Global kill-switch check
+    const ks = killSwitch.check(
+      { connected: ws.isConnected(), disconnectedAt: null },
+      { errorsLast60s: 0, totalLast60s: 100 },
+      { currentDrawdownPct: 0, currentDrawdownUsd: computeCurrentDrawdownUsd() }
+    );
+    if (ks !== 'OK') {
+      logger.warn('Kill switch active', { state: ks });
+      for (const order of paperEngine.getOpenOrders()) {
+        paperEngine.cancel(order.id);
+      }
+      for (const [, ao] of activeOrders) {
+        ao.buy = null;
+        ao.sell = null;
+      }
+      return;
+    }
+
     const yesBook = books.get(market.yesTokenId);
     const noBook = books.get(market.noTokenId);
     if (!yesBook || !noBook) {

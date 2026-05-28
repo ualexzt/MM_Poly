@@ -26,7 +26,7 @@ export class WsMarketStream {
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private tokenIds: string[] = [];
-  private isConnected = false;
+  private _isConnected = false;
   private pingTimer: NodeJS.Timeout | null = null;
 
   constructor(
@@ -40,7 +40,7 @@ export class WsMarketStream {
     this.ws = new WebSocket(this.url);
 
     this.ws.on('open', () => {
-      this.isConnected = true;
+      this._isConnected = true;
       console.log('[WS] Market stream connected');
       this.subscribe(tokenIds);
       this.startPing();
@@ -64,7 +64,7 @@ export class WsMarketStream {
     });
 
     this.ws.on('close', () => {
-      this.isConnected = false;
+      this._isConnected = false;
       this.stopPing();
       console.log('[WS] Disconnected, reconnecting in 5s...');
       this.reconnectTimer = setTimeout(() => this.connect(this.tokenIds), 5000);
@@ -74,7 +74,7 @@ export class WsMarketStream {
   private startPing(): void {
     this.stopPing();
     this.pingTimer = setInterval(() => {
-      if (this.ws && this.isConnected) {
+      if (this.ws && this._isConnected) {
         this.ws.send('PING');
       }
     }, 20000); // 20s interval
@@ -85,6 +85,10 @@ export class WsMarketStream {
       clearInterval(this.pingTimer);
       this.pingTimer = null;
     }
+  }
+
+  isConnected(): boolean {
+    return this._isConnected;
   }
 
   private subscribe(tokenIds: string[]): void {
@@ -193,6 +197,6 @@ export class WsMarketStream {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.ws?.close();
     this.ws = null;
-    this.isConnected = false;
+    this._isConnected = false;
   }
 }
