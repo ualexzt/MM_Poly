@@ -31,6 +31,7 @@ export interface StrategyRunnerDeps {
   paperEngine: PaperExecutionEngine;
   liveSubmitter?: LiveOrderSubmitter;
   logger: Logger;
+  maxMarkets?: number;
 }
 
 interface ActiveOrderSlot {
@@ -125,8 +126,9 @@ export class StrategyRunner {
     const markets = await scanner.fetchMarkets();
     this.catalystGuard.syncFromMarkets(markets);
     const eligible = filterEligibleMarkets(markets, config.marketFilter);
+    const activeMarkets = this.deps.maxMarkets != null ? eligible.slice(0, this.deps.maxMarkets) : eligible;
 
-    for (const market of eligible) {
+    for (const market of activeMarkets) {
       try {
         await this.processMarket(market);
       } catch (err) {
@@ -403,13 +405,27 @@ export class StrategyRunner {
   private async _cancelMarketOrders(conditionId: string): Promise<void> {
     const slots = this.activeOrders.get(conditionId);
     if (!slots) return;
-    if (slots.buy.orderId) {
-      await this.orderRouter.cancelOrder(slots.buy.orderId);
-      slots.buy.orderId = null;
-    }
-    if (slots.sell.orderId) {
-      await this.orderRouter.cancelOrder(slots.sell.orderId);
-      slots.sell.orderId = null;
-    }
+
+    const cancellations: Array<{ side: 'buy' | 'sell'; orderId: string }> = [];
+    if (slots.buy.orderId) cancellations.push({ side: 'buy', orderId: slots.buy.orderId });
+    if (slots.sell.orderId) cancellations.push({ side: 'sell', orderId: slots.sell.orderId });
+
+    const results = await Promise.allSettled(
+      cancellations.map((cancel) => this.orderRouter.cancelOrder(cancel.orderId))
+    );
+
+    results.forEach((result, index) => {
+      const cancel = cancellations[index];
+      if (result.status === 'fulfilled') {
+        slots[cancel.side].orderId = null;
+      } else {
+        this.deps.logger.error('Failed to cancel market order', {
+          conditionId,
+          side: cancel.side,
+          orderId: cancel.orderId,
+          error: String(result.reason),
+        });
+      }
+    });
   }
 }

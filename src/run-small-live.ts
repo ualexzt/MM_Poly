@@ -6,10 +6,18 @@ import { polygon } from 'viem/chains';
 import { env } from './config/env';
 import { GammaApiScanner } from './data/gamma-market-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
+import { WsUserStream } from './data/ws-user-stream';
 import { PaperExecutionEngine } from './simulation/paper-execution-engine';
+import { PaperPnlTracker } from './accounting/paper-pnl-tracker';
 import { ConsoleLogger } from './utils/logger';
 import { LiveOrderSubmitter } from './execution/live-order-submitter';
-import { buildSmallLiveConfig, createSmallLiveStrategyRunner } from './strategy/small-live-runner';
+import {
+  buildSmallLiveConfig,
+  buildTokenConditionMap,
+  cancelAllLiveOrders,
+  createSmallLiveStrategyRunner,
+  handleLiveUserEvent,
+} from './strategy/small-live-runner';
 
 const logger = new ConsoleLogger();
 
@@ -70,21 +78,38 @@ async function main() {
   logger.info('Live order submitter initialized');
   logger.info('Wallet address', { address: account.address });
   const config = buildSmallLiveConfig(env);
+  const scanner = new GammaApiScanner();
+  const initialMarkets = await scanner.fetchMarkets();
+  const tokenConditionIds = buildTokenConditionMap(initialMarkets);
+  const pnlTracker = new PaperPnlTracker(0);
   const runner = createSmallLiveStrategyRunner({
     envConfig: env,
-    scanner: new GammaApiScanner(),
+    scanner: { fetchMarkets: async () => initialMarkets },
     bookClient: new ClobApiClient(),
     paperEngine: new PaperExecutionEngine(config.paperExecution),
     liveSubmitter,
     logger,
   });
 
+  const userStream = new WsUserStream(
+    'wss://ws-subscriptions-clob.polymarket.com/ws/user',
+    env.clobApiKey,
+    (event) => {
+      if (event.type === 'connect') logger.info('User stream connected');
+      if (event.type === 'disconnect') logger.warn('User stream disconnected');
+      handleLiveUserEvent(event, { runner, pnlTracker, tokenConditionIds, logger });
+    },
+    (err) => logger.error('User stream error', { error: err.message })
+  );
+
   logger.info('Mode', { mode: config.mode, liveTradingEnabled: config.liveTradingEnabled });
   logger.info('Base order size', { usd: config.size.baseOrderSizeUsd });
   logger.info('Max order size', { usd: config.size.maxOrderSizeUsd });
   logger.info('Max exposure', { usd: config.inventory.maxTotalStrategyExposureUsd });
   logger.info('Drawdown kill switch', { usd: config.risk.maxDailyDrawdownUsd });
+  logger.info('Initial live market universe', { markets: initialMarkets.length, trackedTokens: tokenConditionIds.size, maxMarkets: env.maxMarkets });
 
+  userStream.connect();
   logger.info('=== Starting small_live strategy loop ===');
 
   let cycleInFlight = false;
@@ -96,7 +121,7 @@ async function main() {
 
     cycleInFlight = true;
     try {
-      await runner.runCycle();
+      await runner.runCycle(userStream.getConnectionStatus());
     } catch (err) {
       logger.error('small_live cycle failed', { error: String(err) });
     } finally {
@@ -107,14 +132,24 @@ async function main() {
   await runOneCycle();
   const interval = setInterval(runOneCycle, config.refreshIntervalMs);
 
-  const shutdown = () => {
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     clearInterval(interval);
-    logger.warn('Small_live shutdown requested');
-    process.exit(0);
+    logger.warn('Small_live shutdown requested; cancelling live orders');
+    try {
+      userStream.disconnect();
+      await cancelAllLiveOrders(liveSubmitter, logger);
+    } catch (err) {
+      logger.error('Live shutdown cancel-all failed', { error: String(err) });
+    } finally {
+      process.exit(0);
+    }
   };
 
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
+  process.once('SIGINT', () => { void shutdown(); });
+  process.once('SIGTERM', () => { void shutdown(); });
 }
 
 main().catch((err) => {

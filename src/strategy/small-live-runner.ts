@@ -3,8 +3,11 @@ import type { MarketScanner } from '../data/gamma-market-scanner';
 import type { OrderbookClient } from '../data/clob-orderbook-client';
 import { PaperExecutionEngine } from '../simulation/paper-execution-engine';
 import { LiveOrderSubmitter } from '../execution/live-order-submitter';
+import { PaperPnlTracker } from '../accounting/paper-pnl-tracker';
+import type { UserStreamEvent } from '../data/ws-user-stream';
 import type { Logger } from '../utils/logger';
 import type { StrategyConfig } from '../types/config';
+import type { MarketState } from '../types/market';
 import { defaultConfig } from './config';
 import { StrategyRunner } from './strategy-runner';
 
@@ -33,6 +36,57 @@ export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
   };
 }
 
+export function buildTokenConditionMap(markets: MarketState[]): Map<string, string> {
+  const tokenConditionIds = new Map<string, string>();
+  for (const market of markets) {
+    if (market.yesTokenId) tokenConditionIds.set(market.yesTokenId, market.conditionId);
+    if (market.noTokenId) tokenConditionIds.set(market.noTokenId, market.conditionId);
+  }
+  return tokenConditionIds;
+}
+
+export function handleLiveUserEvent(
+  event: UserStreamEvent,
+  deps: {
+    runner: Pick<StrategyRunner, 'onFill'>;
+    pnlTracker: PaperPnlTracker;
+    tokenConditionIds: Map<string, string>;
+    logger: Logger;
+  }
+): void {
+  if (event.type !== 'fill') return;
+
+  const fill = event.data;
+  const conditionId = deps.tokenConditionIds.get(fill.tokenId);
+  if (!conditionId) {
+    deps.logger.error('Live fill received for unknown token', { tokenId: fill.tokenId, orderId: fill.orderId });
+    return;
+  }
+
+  deps.runner.onFill(conditionId, fill.tokenId, fill.side, fill.filledPrice, fill.filledSize);
+  deps.pnlTracker.onFill({
+    orderId: fill.orderId,
+    tokenId: fill.tokenId,
+    side: fill.side,
+    filledPrice: fill.filledPrice,
+    filledSize: fill.filledSize,
+    remainingSize: 0,
+  }, fill.filledPrice);
+}
+
+export async function cancelAllLiveOrders(liveSubmitter: LiveOrderSubmitter, logger: Logger): Promise<void> {
+  const openOrders = await liveSubmitter.getOpenOrders();
+  const orderIds = openOrders
+    .map((order) => order.id ?? order.orderID ?? order.orderId)
+    .filter((orderId): orderId is string => typeof orderId === 'string' && orderId.length > 0);
+
+  const results = await Promise.allSettled(orderIds.map((orderId) => liveSubmitter.cancel(orderId)));
+  const failed = results.filter((result) => result.status === 'rejected').length;
+  if (failed > 0) {
+    logger.error('Failed to cancel some live orders during shutdown', { failed, total: orderIds.length });
+  }
+}
+
 export function createSmallLiveStrategyRunner(deps: {
   envConfig: EnvConfig;
   scanner: MarketScanner;
@@ -48,5 +102,6 @@ export function createSmallLiveStrategyRunner(deps: {
     paperEngine: deps.paperEngine ?? new PaperExecutionEngine(defaultConfig.paperExecution),
     liveSubmitter: deps.liveSubmitter,
     logger: deps.logger,
+    maxMarkets: deps.envConfig.maxMarkets,
   });
 }
