@@ -52,6 +52,7 @@ export function validateOrderPreSubmit(params: {
 
   if (killSwitchActive) return { valid: false, reason: 'kill_switch_active' };
   if (mode === 'paper' && liveTradingEnabled) return { valid: false, reason: 'live_flag_set_in_paper_mode' };
+  if (mode === 'small_live' && !liveTradingEnabled) return { valid: false, reason: 'live_trading_disabled' };
   if (!book.bestBid || !book.bestAsk) return { valid: false, reason: 'book_not_fresh' };
   if (quote.price <= 0 || quote.price >= 1) return { valid: false, reason: 'price_out_of_range' };
 

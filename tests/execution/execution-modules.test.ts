@@ -127,6 +127,62 @@ describe('execution tests', () => {
       expect(result.reason).toBe('live_submitter_not_configured');
     });
 
+    test('does not submit live order when live trading flag is disabled', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const mockClient = {
+        createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'live-123' }),
+        cancelOrder: jest.fn().mockResolvedValue({}),
+        getOpenOrders: jest.fn().mockResolvedValue([]),
+      };
+      const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: false }, liveSubmitter);
+
+      const quote: QuoteCandidate = {
+        conditionId: 'c1', tokenId: 'yes1', side: 'BUY', price: 0.45, size: 10, sizeUsd: 4.5,
+        postOnly: true, orderType: 'GTC', fairPrice: 0.50, targetHalfSpreadCents: 5,
+        inventorySkewCents: 0, toxicityScore: 0, reason: 'test', riskFlags: []
+      };
+
+      const book: BookState = {
+        tokenId: 'yes1', conditionId: 'c1',
+        bids: [], asks: [],
+        bestBid: 0.45, bestAsk: 0.55,
+        bestBidSizeUsd: 100, bestAskSizeUsd: 100,
+        midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+        depth1Usd: 100, depth3Usd: 500,
+        tickSize: 0.01, minOrderSize: 5,
+        lastUpdateMs: Date.now()
+      };
+
+      const result = await router.route(quote, book, null, {
+        exposureAllowed: true,
+        sellInventoryAvailable: true,
+        killSwitchActive: false,
+      });
+
+      expect(result.submitted).toBe(false);
+      expect(result.reason).toBe('live_trading_disabled');
+      expect(mockClient.createAndPostOrder).not.toHaveBeenCalled();
+    });
+
+    test('cancels live orders through the configured submitter', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const mockClient = {
+        createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'live-123' }),
+        cancelOrder: jest.fn().mockResolvedValue({}),
+        getOpenOrders: jest.fn().mockResolvedValue([{ id: 'live-1' }, { orderID: 'live-2' }]),
+      };
+      const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: true }, liveSubmitter);
+
+      await router.cancelOrder('live-direct');
+      await router.cancelAll();
+
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-direct');
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-1');
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-2');
+    });
+
     test('submits live order when configured', async () => {
       const paperEngine = new PaperExecutionEngine();
       const mockClient = {

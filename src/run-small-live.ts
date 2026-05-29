@@ -4,9 +4,12 @@ import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { polygon } from 'viem/chains';
 import { env } from './config/env';
+import { GammaApiScanner } from './data/gamma-market-scanner';
+import { ClobApiClient } from './data/clob-orderbook-client';
+import { PaperExecutionEngine } from './simulation/paper-execution-engine';
 import { ConsoleLogger } from './utils/logger';
-import { TelegramNotifier } from './notifier/telegram';
 import { LiveOrderSubmitter } from './execution/live-order-submitter';
+import { buildSmallLiveConfig, createSmallLiveStrategyRunner } from './strategy/small-live-runner';
 
 const logger = new ConsoleLogger();
 
@@ -24,6 +27,14 @@ async function main() {
   }
   if (env.privateKey.length !== 66) {
     logger.error('PRIVATE_KEY looks invalid. Must be 0x + 64 hex characters.');
+    process.exit(1);
+  }
+  if (env.mode !== 'small_live') {
+    logger.error('Refusing live start: MODE must be small_live', { mode: env.mode });
+    process.exit(1);
+  }
+  if (!env.liveTradingEnabled) {
+    logger.error('Refusing live start: LIVE_TRADING_ENABLED must be true');
     process.exit(1);
   }
 
@@ -58,16 +69,52 @@ async function main() {
 
   logger.info('Live order submitter initialized');
   logger.info('Wallet address', { address: account.address });
-  logger.info('Mode', { mode: 'small_live' });
-  logger.info('Base order size', { usd: 1 });
-  logger.info('Max exposure', { usd: 25 });
-  logger.info('Drawdown kill switch', { usd: 5 });
+  const config = buildSmallLiveConfig(env);
+  const runner = createSmallLiveStrategyRunner({
+    envConfig: env,
+    scanner: new GammaApiScanner(),
+    bookClient: new ClobApiClient(),
+    paperEngine: new PaperExecutionEngine(config.paperExecution),
+    liveSubmitter,
+    logger,
+  });
 
-  logger.info('=== Ready for small_live trading ===');
-  logger.info('To start the full strategy loop, integrate this submitter into the orchestration.');
+  logger.info('Mode', { mode: config.mode, liveTradingEnabled: config.liveTradingEnabled });
+  logger.info('Base order size', { usd: config.size.baseOrderSizeUsd });
+  logger.info('Max order size', { usd: config.size.maxOrderSizeUsd });
+  logger.info('Max exposure', { usd: config.inventory.maxTotalStrategyExposureUsd });
+  logger.info('Drawdown kill switch', { usd: config.risk.maxDailyDrawdownUsd });
 
-  // TODO: wire into shared strategy loop with live mode
-  // For now, this validates credentials and exits cleanly.
+  logger.info('=== Starting small_live strategy loop ===');
+
+  let cycleInFlight = false;
+  const runOneCycle = async () => {
+    if (cycleInFlight) {
+      logger.warn('Skipping small_live cycle because prior cycle is still running');
+      return;
+    }
+
+    cycleInFlight = true;
+    try {
+      await runner.runCycle();
+    } catch (err) {
+      logger.error('small_live cycle failed', { error: String(err) });
+    } finally {
+      cycleInFlight = false;
+    }
+  };
+
+  await runOneCycle();
+  const interval = setInterval(runOneCycle, config.refreshIntervalMs);
+
+  const shutdown = () => {
+    clearInterval(interval);
+    logger.warn('Small_live shutdown requested');
+    process.exit(0);
+  };
+
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 }
 
 main().catch((err) => {

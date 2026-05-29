@@ -1,5 +1,7 @@
 import { defaultConfig } from '../../src/strategy/config';
 
+const ORIGINAL_ENV = process.env;
+
 describe('runtime invariants', () => {
   test('paper mode does not allow live orders', () => {
     expect(defaultConfig.mode).toBe('paper');
@@ -25,5 +27,24 @@ describe('runtime invariants', () => {
     expect(defaultConfig.size.baseOrderSizeUsd).toBeLessThanOrEqual(1);
     expect(defaultConfig.size.maxOrderSizeUsd).toBeLessThanOrEqual(1.5);
     expect(defaultConfig.risk.maxDailyDrawdownUsd).toBeLessThanOrEqual(5);
+  });
+
+  test('live trading env flag defaults off and must be explicitly enabled', () => {
+    const loadEnv = (value?: string) => {
+      jest.resetModules();
+      process.env = {
+        ...ORIGINAL_ENV,
+        TELEGRAM_BOT_TOKEN: 'test-token',
+        TELEGRAM_CHAT_ID: 'test-chat',
+        LIVE_TRADING_ENABLED: value,
+      };
+      return require('../../src/config/env').env;
+    };
+
+    expect(loadEnv(undefined).liveTradingEnabled).toBe(false);
+    expect(loadEnv('false').liveTradingEnabled).toBe(false);
+    expect(loadEnv('true').liveTradingEnabled).toBe(true);
+
+    process.env = ORIGINAL_ENV;
   });
 });

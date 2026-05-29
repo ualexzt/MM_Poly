@@ -126,11 +126,27 @@ export class OrderRouter {
     return { submitted: false, reason: `unsupported_mode:${this.config.mode}` };
   }
 
-  cancelOrder(orderId: string): void {
+  async cancelOrder(orderId: string): Promise<void> {
+    if (this.config.mode === 'small_live' && this.liveSubmitter) {
+      await this.liveSubmitter.cancel(orderId);
+      return;
+    }
+
     this.cancelReplace.initCancel(orderId);
   }
 
-  cancelAll(): void {
+  async cancelAll(): Promise<void> {
+    if (this.config.mode === 'small_live' && this.liveSubmitter) {
+      const openOrders = await this.liveSubmitter.getOpenOrders();
+      await Promise.all(
+        openOrders
+          .map((order) => order.id ?? order.orderID ?? order.orderId)
+          .filter((orderId): orderId is string => typeof orderId === 'string' && orderId.length > 0)
+          .map((orderId) => this.liveSubmitter!.cancel(orderId))
+      );
+      return;
+    }
+
     for (const order of this.engine.getOpenOrders()) {
       this.cancelReplace.initCancel(order.id);
     }

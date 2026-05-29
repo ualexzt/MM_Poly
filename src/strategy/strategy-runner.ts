@@ -19,6 +19,7 @@ import { ResolutionWindowGuard } from '../risk/resolution-window-guard';
 import { CatalystGuard } from '../risk/catalyst-guard';
 import { isBookStale } from '../risk/stale-book-guard';
 import { OrderRouter } from '../execution/order-router';
+import { LiveOrderSubmitter } from '../execution/live-order-submitter';
 import { OpenOrderReconciler } from '../execution/open-order-reconciler';
 import { classifyFill } from '../accounting/fill-classifier';
 import { createTrace } from '../accounting/decision-trace';
@@ -28,6 +29,7 @@ export interface StrategyRunnerDeps {
   scanner: MarketScanner;
   bookClient: OrderbookClient;
   paperEngine: PaperExecutionEngine;
+  liveSubmitter?: LiveOrderSubmitter;
   logger: Logger;
 }
 
@@ -77,7 +79,7 @@ export class StrategyRunner {
     this.orderRouter = new OrderRouter(paperEngine, {
       mode: config.mode,
       liveTradingEnabled: config.liveTradingEnabled,
-    });
+    }, deps.liveSubmitter ?? null);
     this.reconciler = new OpenOrderReconciler(paperEngine);
   }
 
@@ -115,7 +117,7 @@ export class StrategyRunner {
 
     if (ks === 'CANCEL_ALL' || ks === 'DISABLE_STRATEGY') {
       logger.warn('Kill switch triggered', { state: ks });
-      this.orderRouter.cancelAll();
+      await this.orderRouter.cancelAll();
       if (ks === 'DISABLE_STRATEGY') return;
     }
 
@@ -155,21 +157,21 @@ export class StrategyRunner {
     // Stale book guard (§8.4)
     if (isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs)) {
       logger.warn('Stale book — skipping market', { conditionId: market.conditionId });
-      this._cancelMarketOrders(market.conditionId);
+      await this._cancelMarketOrders(market.conditionId);
       return;
     }
 
     // Resolution window guard (§13.2)
     if (this.resolutionGuard.shouldDisable(market.endDate)) {
       logger.info('Near resolution — cancelling market orders', { conditionId: market.conditionId });
-      this._cancelMarketOrders(market.conditionId);
+      await this._cancelMarketOrders(market.conditionId);
       return;
     }
 
     // Catalyst guard (§4.3)
     if (this.catalystGuard.isCatalystImminent(market.conditionId)) {
       logger.info('Catalyst imminent — skipping market', { conditionId: market.conditionId });
-      this._cancelMarketOrders(market.conditionId);
+      await this._cancelMarketOrders(market.conditionId);
       return;
     }
 
@@ -177,7 +179,7 @@ export class StrategyRunner {
     const prevTicks = this.tickSizes.get(market.conditionId);
     if (prevTicks && hasTickSizeChanged(yesBook.tickSize, prevTicks.yesTickSize)) {
       logger.warn('Tick size changed — cancelling and repricing', { conditionId: market.conditionId });
-      this._cancelMarketOrders(market.conditionId);
+      await this._cancelMarketOrders(market.conditionId);
       this.killSwitch.resetAdverseFills();
     }
     this.tickSizes.set(market.conditionId, {
@@ -223,7 +225,7 @@ export class StrategyRunner {
 
     if (hardCancel || toxicityAction === 'cancel_all_market_orders') {
       logger.warn('Hard toxicity cancel', { conditionId: market.conditionId, toxicityScore });
-      this._cancelMarketOrders(market.conditionId);
+      await this._cancelMarketOrders(market.conditionId);
       return;
     }
 
@@ -398,15 +400,15 @@ export class StrategyRunner {
     return slots;
   }
 
-  private _cancelMarketOrders(conditionId: string): void {
+  private async _cancelMarketOrders(conditionId: string): Promise<void> {
     const slots = this.activeOrders.get(conditionId);
     if (!slots) return;
     if (slots.buy.orderId) {
-      this.orderRouter.cancelOrder(slots.buy.orderId);
+      await this.orderRouter.cancelOrder(slots.buy.orderId);
       slots.buy.orderId = null;
     }
     if (slots.sell.orderId) {
-      this.orderRouter.cancelOrder(slots.sell.orderId);
+      await this.orderRouter.cancelOrder(slots.sell.orderId);
       slots.sell.orderId = null;
     }
   }

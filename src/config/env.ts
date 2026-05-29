@@ -13,6 +13,7 @@ export interface EnvConfig {
   dailyReportHour: number;
   dailyReportMinute: number;
   maxMarkets: number;
+  liveTradingEnabled: boolean;
   privateKey?: string;
   clobApiKey?: string;
   clobApiSecret?: string;
@@ -46,6 +47,14 @@ function getEnvFloat(key: string, defaultValue: number): number {
   return parsed;
 }
 
+function getEnvBool(key: string, defaultValue: boolean): boolean {
+  const val = process.env[key];
+  if (val === undefined) return defaultValue;
+  if (val === 'true') return true;
+  if (val === 'false') return false;
+  throw new Error(`Invalid boolean for ${key}: ${val}`);
+}
+
 export const env: EnvConfig = {
   nodeEnv: getEnv('NODE_ENV', 'development'),
   telegramBotToken: getEnv('TELEGRAM_BOT_TOKEN'),
@@ -59,6 +68,7 @@ export const env: EnvConfig = {
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
   dailyReportMinute: getEnvInt('DAILY_REPORT_MINUTE', 0),
   maxMarkets: getEnvInt('MAX_MARKETS', 20),
+  liveTradingEnabled: getEnvBool('LIVE_TRADING_ENABLED', false),
   privateKey: process.env.PRIVATE_KEY,
   clobApiKey: process.env.CLOB_API_KEY,
   clobApiSecret: process.env.CLOB_API_SECRET,
