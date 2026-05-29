@@ -41,6 +41,9 @@ export class WsUserStream {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private isConnected = false;
   private disconnectedAt: number | null = null;
+  private reconnectAttempt = 0;
+  private readonly MAX_RECONNECT_DELAY_MS = 60_000;
+  private readonly BASE_RECONNECT_DELAY_MS = 1_000;
 
   constructor(
     private url: string = 'wss://ws-subscriptions-clob.polymarket.com/ws/user',
@@ -55,6 +58,7 @@ export class WsUserStream {
     this.ws.on('open', () => {
       this.isConnected = true;
       this.disconnectedAt = null;
+      this.reconnectAttempt = 0;
       console.log('[WS:User] Connected');
       this.subscribe();
       this.onEvent({ type: 'connect' });
@@ -77,9 +81,14 @@ export class WsUserStream {
     this.ws.on('close', () => {
       this.isConnected = false;
       this.disconnectedAt = Date.now();
-      console.log('[WS:User] Disconnected, reconnecting in 3s…');
+      const delay = Math.min(
+        this.BASE_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempt) + Math.random() * 1000,
+        this.MAX_RECONNECT_DELAY_MS
+      );
+      this.reconnectAttempt++;
+      console.log(`[WS:User] Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt})...`);
       this.onEvent({ type: 'disconnect' });
-      this.reconnectTimer = setTimeout(() => this.connect(), 3000);
+      this.reconnectTimer = setTimeout(() => this.connect(), delay);
     });
   }
 
