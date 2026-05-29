@@ -138,12 +138,16 @@ export class OrderRouter {
   async cancelAll(): Promise<void> {
     if (this.config.mode === 'small_live' && this.liveSubmitter) {
       const openOrders = await this.liveSubmitter.getOpenOrders();
-      await Promise.all(
+      const results = await Promise.allSettled(
         openOrders
           .map((order) => order.id ?? order.orderID ?? order.orderId)
           .filter((orderId): orderId is string => typeof orderId === 'string' && orderId.length > 0)
           .map((orderId) => this.liveSubmitter!.cancel(orderId))
       );
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed > 0) {
+        console.error(`cancelAll: ${failed}/${results.length} cancels failed`);
+      }
       return;
     }
 
