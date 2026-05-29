@@ -53,6 +53,10 @@ async function main() {
   const activityTracker = new TradingActivityTracker();
   const latestRiskDecisions = new Map<string, MarketRiskDecision>();
 
+  // Error tracking for kill switch — real API call/error rates
+  const apiCallTimestamps: number[] = [];
+  const apiErrorTimestamps: number[] = [];
+
   // Apply env overrides
   const config = {
     ...defaultConfig,
@@ -159,10 +163,12 @@ async function main() {
   }
 
   try {
+    apiCallTimestamps.push(Date.now());
     markets = await scanner.fetchMarkets();
     eligible = filterEligibleMarkets(markets, config.marketFilter);
     logger.info(`Loaded ${markets.length} markets, ${eligible.length} eligible`);
   } catch (err) {
+    apiErrorTimestamps.push(Date.now());
     errorsCount += 1;
     logger.error('Failed to load markets', { error: String(err) });
     process.exit(1);
@@ -175,14 +181,17 @@ async function main() {
   for (const market of activeMarkets) {
     try {
       if (market.yesTokenId) {
+        apiCallTimestamps.push(Date.now());
         const book = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
         books.set(market.yesTokenId, book);
       }
       if (market.noTokenId) {
+        apiCallTimestamps.push(Date.now());
         const book = await bookClient.fetchBook(market.conditionId, market.noTokenId);
         books.set(market.noTokenId, book);
       }
     } catch (err) {
+      apiErrorTimestamps.push(Date.now());
       warningsCount += 1;
       logger.warn('Initial book fetch failed', { conditionId: market.conditionId, error: String(err) });
     }
@@ -205,10 +214,14 @@ async function main() {
   }
 
   function evaluateMarket(market: MarketState, tradePrice?: number) {
-    // Global kill-switch check
+    // Global kill-switch check with real API error rate
+    const now60s = Date.now() - 60_000;
+    while (apiCallTimestamps.length && apiCallTimestamps[0] < now60s) apiCallTimestamps.shift();
+    while (apiErrorTimestamps.length && apiErrorTimestamps[0] < now60s) apiErrorTimestamps.shift();
+
     const ks = killSwitch.check(
       { connected: ws.isConnected(), disconnectedAt: null },
-      { errorsLast60s: 0, totalLast60s: 100 },
+      { errorsLast60s: apiErrorTimestamps.length, totalLast60s: apiCallTimestamps.length },
       { currentDrawdownPct: 0, currentDrawdownUsd: computeCurrentDrawdownUsd() }
     );
     if (ks !== 'OK') {
