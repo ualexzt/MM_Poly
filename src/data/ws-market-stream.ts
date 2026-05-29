@@ -144,8 +144,8 @@ export class WsMarketStream {
             spreadTicks: spread !== null ? Math.round(spread / 0.01) : null,
             depth1Usd: (bestBid !== null ? bestBid * (parseFloat(change.size) || 0) : 0) + (bestAsk !== null ? bestAsk * (parseFloat(change.size) || 0) : 0),
             depth3Usd: (bestBid !== null ? bestBid * (parseFloat(change.size) || 0) : 0) + (bestAsk !== null ? bestAsk * (parseFloat(change.size) || 0) : 0),
-            tickSize: 0.01,
-            minOrderSize: 1,
+            tickSize: change.tick_size ? parseFloat(change.tick_size) : 0.01,
+            minOrderSize: change.min_order_size ? parseFloat(change.min_order_size) : 1,
             orderbookHash: change.hash || null,
             lastUpdateMs: Date.now()
           },
@@ -195,8 +195,8 @@ export class WsMarketStream {
       spreadTicks: spread !== null ? Math.round(spread / 0.01) : null,
       depth1Usd: (bids[0]?.sizeUsd || 0) + (asks[0]?.sizeUsd || 0),
       depth3Usd: bids.slice(0, 3).reduce((s, b) => s + b.sizeUsd, 0) + asks.slice(0, 3).reduce((s, a) => s + a.sizeUsd, 0),
-      tickSize: 0.01,
-      minOrderSize: 1,
+      tickSize: payload.tick_size ? parseFloat(payload.tick_size) : 0.01,
+      minOrderSize: payload.min_order_size ? parseFloat(payload.min_order_size) : 1,
       orderbookHash: payload.hash || null,
       lastUpdateMs: Date.now()
     };

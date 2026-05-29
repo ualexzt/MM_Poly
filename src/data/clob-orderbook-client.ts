@@ -33,9 +33,8 @@ function mapClobBook(data: any, tokenId: string, conditionId: string): BookState
   const midpoint = bestBid !== null && bestAsk !== null ? (bestBid + bestAsk) / 2 : null;
   const spread = bestBid !== null && bestAsk !== null ? bestAsk - bestBid : null;
 
-  // CLOB tick size is usually 0.01 for most markets
-  const tickSize = 0.01;
-  const minOrderSize = 1;
+  const tickSize = data.tick_size ? parseFloat(data.tick_size) : 0.01;
+  const minOrderSize = data.min_order_size ? parseFloat(data.min_order_size) : 1;
 
   return {
     tokenId,
