@@ -56,6 +56,133 @@ describe('strategy-runner', () => {
     );
   });
 
+  test('fetches fresh books even when a stale cached book exists', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-refresh', yesTokenId: 'yes-refresh', noTokenId: 'no-refresh', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    const freshBook = (conditionId: string, tokenId: string): BookState => ({
+      tokenId, conditionId,
+      bids: [{ price: 0.45, size: 100, sizeUsd: 45 }],
+      asks: [{ price: 0.55, size: 100, sizeUsd: 55 }],
+      bestBid: 0.45, bestAsk: 0.55,
+      bestBidSizeUsd: 45, bestAskSizeUsd: 55,
+      midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+      depth1Usd: 100, depth3Usd: 500,
+      tickSize: 0.01, minOrderSize: 1,
+      lastUpdateMs: Date.now(),
+    });
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'fresh-live-order' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      scanner: { fetchMarkets: async () => [market] },
+      bookClient: { fetchBook: jest.fn(async (conditionId: string, tokenId: string) => freshBook(conditionId, tokenId)) },
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+    runner.updateBook(market.yesTokenId, { ...freshBook(market.conditionId, market.yesTokenId), lastUpdateMs: Date.now() - 100_000 });
+    runner.updateBook(market.noTokenId, { ...freshBook(market.conditionId, market.noTokenId), lastUpdateMs: Date.now() - 100_000 });
+
+    await runner.runCycle();
+
+    expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenID: 'yes-refresh', side: 'BUY' }),
+      expect.anything(),
+      'GTC'
+    );
+  });
+
+  test('cancels live orders for markets that leave the active universe', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-dropped', yesTokenId: 'yes-dropped', noTokenId: 'no-dropped', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    let markets = [market];
+    const bookClient = {
+      async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
+        return {
+          tokenId, conditionId,
+          bids: [{ price: 0.45, size: 100, sizeUsd: 45 }],
+          asks: [{ price: 0.55, size: 100, sizeUsd: 55 }],
+          bestBid: 0.45, bestAsk: 0.55,
+          bestBidSizeUsd: 45, bestAskSizeUsd: 55,
+          midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+          depth1Usd: 100, depth3Usd: 500,
+          tickSize: 0.01, minOrderSize: 1,
+          lastUpdateMs: Date.now(),
+        };
+      },
+    };
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'dropped-live-order' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      scanner: { fetchMarkets: async () => markets },
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle();
+    markets = [];
+    await runner.runCycle();
+
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith('dropped-live-order');
+  });
+
+  test('cancels existing inventory-increasing live order when hard inventory limit is reached', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-hard-limit', yesTokenId: 'yes-hard', noTokenId: 'no-hard', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    const bookClient = {
+      async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
+        return {
+          tokenId, conditionId,
+          bids: [{ price: 0.45, size: 100, sizeUsd: 45 }],
+          asks: [{ price: 0.55, size: 100, sizeUsd: 55 }],
+          bestBid: 0.45, bestAsk: 0.55,
+          bestBidSizeUsd: 45, bestAskSizeUsd: 55,
+          midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+          depth1Usd: 100, depth3Usd: 500,
+          tickSize: 0.01, minOrderSize: 1,
+          lastUpdateMs: Date.now(),
+        };
+      },
+    };
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'buy-increasing' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      scanner: { fetchMarkets: async () => [market] },
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle();
+    runner.onFill(market.conditionId, market.yesTokenId, 'BUY', 0.49, 10);
+    await runner.runCycle();
+
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith('buy-increasing');
+  });
+
   test('clears filled live order slots before the next quote cycle', async () => {
     const market: MarketState = {
       conditionId: 'cond-slot-clear', yesTokenId: 'yes-slot', noTokenId: 'no-slot', active: true, closed: false,
@@ -94,7 +221,7 @@ describe('strategy-runner', () => {
     });
 
     await runner.runCycle();
-    runner.onOrderUpdate('buy-filled', 'filled');
+    runner.onOrderUpdate('buy-filled', 'canceled');
     await runner.runCycle();
 
     expect(mockClient.cancelOrder).not.toHaveBeenCalledWith('buy-filled');

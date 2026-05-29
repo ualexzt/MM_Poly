@@ -127,6 +127,7 @@ export class StrategyRunner {
     this.catalystGuard.syncFromMarkets(markets);
     const eligible = filterEligibleMarkets(markets, config.marketFilter);
     const activeMarkets = this.deps.maxMarkets != null ? eligible.slice(0, this.deps.maxMarkets) : eligible;
+    await this._cancelOrdersOutsideActiveUniverse(new Set(activeMarkets.map((market) => market.conditionId)));
 
     for (const market of activeMarkets) {
       try {
@@ -141,18 +142,10 @@ export class StrategyRunner {
     const { config, bookClient, paperEngine, logger } = this.deps;
 
     // §11.1 step 2 — Fetch/update books
-    let yesBook = this.books.get(market.yesTokenId);
-    let noBook = this.books.get(market.noTokenId);
-
-    // Fetch via REST if not in cache
-    if (!yesBook) {
-      yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
-      this.books.set(market.yesTokenId, yesBook);
-    }
-    if (!noBook) {
-      noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
-      this.books.set(market.noTokenId, noBook);
-    }
+    const yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
+    const noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
+    this.books.set(market.yesTokenId, yesBook);
+    this.books.set(market.noTokenId, noBook);
 
     // §11.1 step 5 — Hard risk checks
 
@@ -272,10 +265,16 @@ export class StrategyRunner {
 
     // §11.1 steps 10-14 — Generate, validate, diff, cancel stale, submit
     const slots = this._getOrCreateSlots(market.conditionId);
+    const netPosition = invState.yesTokens - invState.noTokens;
+    const inventoryIncreasingSide: 'BUY' | 'SELL' | null =
+      netPosition > 0 ? 'BUY' : netPosition < 0 ? 'SELL' : null;
 
     for (const side of ['BUY', 'SELL'] as const) {
-      // §9.4 — exit-only: only reduce inventory
-      if ((exitOnly || invState.hardLimitBreached) && side === 'BUY') continue;
+      // §9.4 — exit-only/hard-limit: cancel and block only the inventory-increasing side.
+      if ((exitOnly || invState.hardLimitBreached) && side === inventoryIncreasingSide) {
+        await this._cancelSideOrder(slots, side);
+        continue;
+      }
 
       // §9.5 — Sell guard
       const tokenBalance = this.inventory.getTokenBalance(market.yesTokenId);
@@ -374,8 +373,8 @@ export class StrategyRunner {
   }
 
   /** Clear locally tracked live order slots when the exchange reports a terminal order state. */
-  onOrderUpdate(orderId: string, status: 'open' | 'filled' | 'cancelled' | 'partially_filled'): void {
-    if (status !== 'filled' && status !== 'cancelled') return;
+  onOrderUpdate(orderId: string, status: 'open' | 'filled' | 'cancelled' | 'canceled' | 'rejected' | 'partially_filled'): void {
+    if (status !== 'filled' && status !== 'cancelled' && status !== 'canceled' && status !== 'rejected') return;
 
     for (const slots of this.activeOrders.values()) {
       if (slots.buy.orderId === orderId) slots.buy.orderId = null;
@@ -410,6 +409,30 @@ export class StrategyRunner {
       this.activeOrders.set(conditionId, slots);
     }
     return slots;
+  }
+
+  private async _cancelSideOrder(slots: MarketOrderSlots, side: 'BUY' | 'SELL'): Promise<void> {
+    const slot = side === 'BUY' ? slots.buy : slots.sell;
+    if (!slot.orderId) return;
+
+    try {
+      await this.orderRouter.cancelOrder(slot.orderId);
+      slot.orderId = null;
+    } catch (err) {
+      this.deps.logger.error('Failed to cancel inventory-increasing order', {
+        side,
+        orderId: slot.orderId,
+        error: String(err),
+      });
+    }
+  }
+
+  private async _cancelOrdersOutsideActiveUniverse(activeConditionIds: Set<string>): Promise<void> {
+    for (const conditionId of this.activeOrders.keys()) {
+      if (!activeConditionIds.has(conditionId)) {
+        await this._cancelMarketOrders(conditionId);
+      }
+    }
   }
 
   private async _cancelMarketOrders(conditionId: string): Promise<void> {

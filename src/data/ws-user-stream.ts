@@ -7,7 +7,7 @@ import WebSocket from 'ws';
 
 export interface UserOrderUpdate {
   orderId: string;
-  status: 'open' | 'filled' | 'cancelled' | 'partially_filled';
+  status: 'open' | 'filled' | 'cancelled' | 'canceled' | 'rejected' | 'partially_filled';
   filledSize?: number;
   remainingSize?: number;
   price?: number;
