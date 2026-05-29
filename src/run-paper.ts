@@ -18,6 +18,7 @@ import { isBookStale } from './risk/stale-book-guard';
 import { MarketRiskDecision, maxRiskStatus, RiskStatus, StrategyRiskManager } from './risk/strategy-risk-manager';
 import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/telegram-risk-report';
 import { KillSwitch } from './risk/kill-switch';
+import { computeToxicityScore } from './engines/toxicity-engine';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 import { DataApiClient } from './data/data-api-client';
@@ -329,7 +330,26 @@ async function main() {
     }
     lastQuoteTime.set(market.conditionId, now);
 
-    const toxicityScore = 0.1;
+    // Compute real toxicity score from available book state
+    // Paper mode lacks full flow tracking (taker volumes, trade counts),
+    // so we estimate what we can and default the rest to 0.
+    const midpointDeltaCents = (yesBook.midpoint !== null && yesBook.lastTradePrice != null)
+      ? Math.abs(yesBook.midpoint - yesBook.lastTradePrice) * 100
+      : 0;
+    const toxicityScore = computeToxicityScore({
+      conditionId: market.conditionId,
+      tokenId: market.yesTokenId,
+      trades10s: 0,
+      trades30s: 0,
+      trades60s: 0,
+      takerBuyVolume60sUsd: 0,
+      takerSellVolume60sUsd: 0,
+      largeTradeCount60s: 0,
+      midpointChange10sCents: 0,
+      midpointChange60sCents: midpointDeltaCents,
+      bookHashChanges10s: 0,
+      wsDisconnectsLast5m: 0,
+    });
     const inventorySkew = getInventorySkew(market.yesTokenId);
 
     for (const side of ['BUY', 'SELL'] as const) {
