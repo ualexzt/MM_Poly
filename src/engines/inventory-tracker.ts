@@ -6,6 +6,12 @@ import { InventoryConfig } from '../types/config';
  * Maintains real-time inventory state from paper fills.
  */
 
+export interface ExternalPosition {
+  tokenId: string;
+  size: number;
+  avgPrice: number;
+}
+
 interface TokenBalance {
   tokens: number;   // positive = long
   avgCost: number;  // avg entry price
@@ -114,6 +120,22 @@ export class InventoryTracker {
       reduceOnlyLimitBreached,
       hardLimitBreached,
     };
+  }
+
+  /**
+   * Seed inventory from external positions (e.g., Data API on startup).
+   * Only seeds tokens that don't already have a balance — preserves existing fills.
+   */
+  loadPositions(positions: ExternalPosition[]): void {
+    for (const pos of positions) {
+      if (pos.size <= 0) continue;
+      if (this.balances.has(pos.tokenId)) continue; // don't overwrite existing
+
+      this.balances.set(pos.tokenId, {
+        tokens: pos.size,
+        avgCost: pos.avgPrice,
+      });
+    }
   }
 
   getTokenBalance(tokenId: string): number {
