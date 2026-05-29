@@ -56,6 +56,55 @@ describe('strategy-runner', () => {
     );
   });
 
+  test('clears filled live order slots before the next quote cycle', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-slot-clear', yesTokenId: 'yes-slot', noTokenId: 'no-slot', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    const bookClient = {
+      async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
+        return {
+          tokenId, conditionId,
+          bids: [{ price: 0.45, size: 100, sizeUsd: 45 }],
+          asks: [{ price: 0.55, size: 100, sizeUsd: 55 }],
+          bestBid: 0.45, bestAsk: 0.55,
+          bestBidSizeUsd: 45, bestAskSizeUsd: 55,
+          midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+          depth1Usd: 100, depth3Usd: 500,
+          tickSize: 0.01, minOrderSize: 1,
+          lastUpdateMs: Date.now(),
+        };
+      },
+    };
+    const mockClient = {
+      createAndPostOrder: jest.fn()
+        .mockResolvedValueOnce({ orderID: 'buy-filled' })
+        .mockResolvedValueOnce({ orderID: 'buy-replacement' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      scanner: { fetchMarkets: async () => [market] },
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle();
+    runner.onOrderUpdate('buy-filled', 'filled');
+    await runner.runCycle();
+
+    expect(mockClient.cancelOrder).not.toHaveBeenCalledWith('buy-filled');
+    expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenID: 'yes-slot', side: 'BUY' }),
+      expect.anything(),
+      'GTC'
+    );
+  });
+
   test('attempts to cancel both live sides even when one cancel fails', async () => {
     const market: MarketState = {
       conditionId: 'cond-live-cancel', yesTokenId: 'yes-live', noTokenId: 'no-live', active: true, closed: false,

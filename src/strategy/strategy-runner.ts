@@ -373,6 +373,16 @@ export class StrategyRunner {
     }
   }
 
+  /** Clear locally tracked live order slots when the exchange reports a terminal order state. */
+  onOrderUpdate(orderId: string, status: 'open' | 'filled' | 'cancelled' | 'partially_filled'): void {
+    if (status !== 'filled' && status !== 'cancelled') return;
+
+    for (const slots of this.activeOrders.values()) {
+      if (slots.buy.orderId === orderId) slots.buy.orderId = null;
+      if (slots.sell.orderId === orderId) slots.sell.orderId = null;
+    }
+  }
+
   /** Process a fill event — update inventory, classify fill, record in kill switch */
   onFill(
     conditionId: string,

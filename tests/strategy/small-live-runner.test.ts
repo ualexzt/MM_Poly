@@ -6,6 +6,7 @@ import {
   createSmallLiveStrategyRunner,
   buildSmallLiveConfig,
   buildTokenConditionMap,
+  createTrackingMarketScanner,
   cancelAllLiveOrders,
   handleLiveUserEvent,
 } from '../../src/strategy/small-live-runner';
@@ -66,6 +67,34 @@ describe('small-live runner wiring', () => {
     expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-2');
   });
 
+  test('tracking scanner refreshes token-condition mapping on every fetch', async () => {
+    const tokenConditionIds = new Map<string, string>();
+    const scanner = createTrackingMarketScanner({
+      fetchMarkets: jest.fn()
+        .mockResolvedValueOnce([
+          {
+            conditionId: 'cond-1', yesTokenId: 'yes1', noTokenId: 'no1', active: true, closed: false,
+            enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+            oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            conditionId: 'cond-2', yesTokenId: 'yes2', noTokenId: 'no2', active: true, closed: false,
+            enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+            oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+          },
+        ]),
+    }, tokenConditionIds);
+
+    await scanner.fetchMarkets();
+    expect(tokenConditionIds.get('yes1')).toBe('cond-1');
+
+    await scanner.fetchMarkets();
+    expect(tokenConditionIds.has('yes1')).toBe(false);
+    expect(tokenConditionIds.get('yes2')).toBe('cond-2');
+  });
+
   test('maps live fill events into strategy inventory and PnL tracking', () => {
     const tokenConditionIds = buildTokenConditionMap([
       {
@@ -74,7 +103,7 @@ describe('small-live runner wiring', () => {
         oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
       },
     ]);
-    const runner = { onFill: jest.fn() };
+    const runner = { onFill: jest.fn(), onOrderUpdate: jest.fn() };
     const pnlTracker = new PaperPnlTracker(0);
 
     handleLiveUserEvent(
@@ -87,6 +116,20 @@ describe('small-live runner wiring', () => {
 
     expect(runner.onFill).toHaveBeenCalledWith('cond-1', 'yes1', 'BUY', 0.49, 2);
     expect(pnlTracker.getPosition('yes1')).toMatchObject({ netSize: 2, avgCost: 0.49 });
+  });
+
+  test('maps live order terminal events into strategy order-slot reconciliation', () => {
+    const runner = { onFill: jest.fn(), onOrderUpdate: jest.fn() };
+
+    handleLiveUserEvent(
+      {
+        type: 'order',
+        data: { orderId: 'live-order-1', status: 'filled' },
+      },
+      { runner, pnlTracker: new PaperPnlTracker(0), tokenConditionIds: new Map(), logger: silentLogger }
+    );
+
+    expect(runner.onOrderUpdate).toHaveBeenCalledWith('live-order-1', 'filled');
   });
 
   test('creates a strategy runner that routes a valid quote to the live submitter', async () => {

@@ -45,15 +45,35 @@ export function buildTokenConditionMap(markets: MarketState[]): Map<string, stri
   return tokenConditionIds;
 }
 
+export function createTrackingMarketScanner(
+  scanner: MarketScanner,
+  tokenConditionIds: Map<string, string>
+): MarketScanner {
+  return {
+    async fetchMarkets(): Promise<MarketState[]> {
+      const markets = await scanner.fetchMarkets();
+      tokenConditionIds.clear();
+      for (const [tokenId, conditionId] of buildTokenConditionMap(markets)) {
+        tokenConditionIds.set(tokenId, conditionId);
+      }
+      return markets;
+    },
+  };
+}
+
 export function handleLiveUserEvent(
   event: UserStreamEvent,
   deps: {
-    runner: Pick<StrategyRunner, 'onFill'>;
+    runner: Pick<StrategyRunner, 'onFill' | 'onOrderUpdate'>;
     pnlTracker: PaperPnlTracker;
     tokenConditionIds: Map<string, string>;
     logger: Logger;
   }
 ): void {
+  if (event.type === 'order') {
+    deps.runner.onOrderUpdate(event.data.orderId, event.data.status);
+    return;
+  }
   if (event.type !== 'fill') return;
 
   const fill = event.data;

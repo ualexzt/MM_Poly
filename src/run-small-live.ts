@@ -13,9 +13,9 @@ import { ConsoleLogger } from './utils/logger';
 import { LiveOrderSubmitter } from './execution/live-order-submitter';
 import {
   buildSmallLiveConfig,
-  buildTokenConditionMap,
   cancelAllLiveOrders,
   createSmallLiveStrategyRunner,
+  createTrackingMarketScanner,
   handleLiveUserEvent,
 } from './strategy/small-live-runner';
 
@@ -78,13 +78,13 @@ async function main() {
   logger.info('Live order submitter initialized');
   logger.info('Wallet address', { address: account.address });
   const config = buildSmallLiveConfig(env);
-  const scanner = new GammaApiScanner();
+  const tokenConditionIds = new Map<string, string>();
+  const scanner = createTrackingMarketScanner(new GammaApiScanner(), tokenConditionIds);
   const initialMarkets = await scanner.fetchMarkets();
-  const tokenConditionIds = buildTokenConditionMap(initialMarkets);
   const pnlTracker = new PaperPnlTracker(0);
   const runner = createSmallLiveStrategyRunner({
     envConfig: env,
-    scanner: { fetchMarkets: async () => initialMarkets },
+    scanner,
     bookClient: new ClobApiClient(),
     paperEngine: new PaperExecutionEngine(config.paperExecution),
     liveSubmitter,
