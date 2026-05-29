@@ -20,6 +20,7 @@ export interface EnvConfig {
   clobApiPassphrase?: string;
   relayerApiKey?: string;
   relayerApiKeyAddress?: string;
+  walletAddress?: string;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -75,4 +76,5 @@ export const env: EnvConfig = {
   clobApiPassphrase: process.env.CLOB_API_PASSPHRASE,
   relayerApiKey: process.env.RELAYER_API_KEY,
   relayerApiKeyAddress: process.env.RELAYER_API_KEY_ADDRESS,
+  walletAddress: process.env.WALLET_ADDRESS,
 };

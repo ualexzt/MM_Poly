@@ -383,6 +383,11 @@ export class StrategyRunner {
   }
 
   /** Process a fill event — update inventory, classify fill, record in kill switch */
+  /** Expose inventory tracker for startup reconciliation and diagnostics */
+  getInventory(): InventoryTracker {
+    return this.inventory;
+  }
+
   onFill(
     conditionId: string,
     tokenId: string,

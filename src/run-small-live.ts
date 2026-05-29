@@ -11,6 +11,7 @@ import { PaperExecutionEngine } from './simulation/paper-execution-engine';
 import { PaperPnlTracker } from './accounting/paper-pnl-tracker';
 import { ConsoleLogger } from './utils/logger';
 import { LiveOrderSubmitter } from './execution/live-order-submitter';
+import { DataApiClient } from './data/data-api-client';
 import {
   buildSmallLiveConfig,
   cancelAllLiveOrders,
@@ -90,6 +91,23 @@ async function main() {
     liveSubmitter,
     logger,
   });
+
+  // Position reconciliation from Polymarket Data API
+  if (env.walletAddress) {
+    const dataApi = new DataApiClient('https://data-api.polymarket.com', env.walletAddress);
+    try {
+      const positions = await dataApi.fetchPositions();
+      logger.info('Loaded positions from Data API', { count: positions.length });
+      runner.getInventory().loadPositions(
+        positions.map(p => ({ tokenId: p.tokenId, size: p.size, avgPrice: p.avgPrice }))
+      );
+    } catch (err) {
+      logger.error('Failed to load positions from Data API', { error: String(err) });
+      // Non-fatal: continue with empty inventory, WS fills will rebuild it
+    }
+  } else {
+    logger.warn('WALLET_ADDRESS not set — skipping position reconciliation');
+  }
 
   const userStream = new WsUserStream(
     'wss://ws-subscriptions-clob.polymarket.com/ws/user',
