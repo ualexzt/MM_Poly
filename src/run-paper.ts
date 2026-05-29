@@ -20,6 +20,7 @@ import { formatTelegramRiskReport, RiskTrajectorySnapshot } from './reporting/te
 import { KillSwitch } from './risk/kill-switch';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
+import { DataApiClient } from './data/data-api-client';
 
 const QUOTE_COOLDOWN_MS = 10000;   // 10 sec between quote recalculation per market
 const ORDER_TTL_MS = 60000;        // 60 sec max lifetime for an order before replace
@@ -105,6 +106,28 @@ async function main() {
   await telegram.sendMessage(
     `🚀 <b>Bot started</b>\nMode: <b>PAPER TRADING</b>\nReports: 08:00 & 20:00 Kyiv time`
   );
+
+  // Load existing positions from Data API for accurate paper tracking
+  if (env.walletAddress) {
+    const dataApi = new DataApiClient('https://data-api.polymarket.com', env.walletAddress);
+    try {
+      const positions = await dataApi.fetchPositions();
+      logger.info('Loaded positions from Data API for paper tracking', { count: positions.length });
+      for (const pos of positions) {
+        pnlTracker.onFill({
+          orderId: `startup-${pos.tokenId}`,
+          tokenId: pos.tokenId,
+          side: 'BUY',
+          filledPrice: pos.avgPrice,
+          filledSize: pos.size,
+          remainingSize: 0,
+        }, pos.curPrice);
+      }
+    } catch (err) {
+      logger.warn('Could not load positions from Data API', { error: String(err) });
+      // Non-fatal: continue with empty positions
+    }
+  }
 
   let markets: MarketState[] = [];
   let eligible: MarketState[] = [];
