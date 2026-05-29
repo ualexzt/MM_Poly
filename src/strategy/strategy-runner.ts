@@ -465,5 +465,10 @@ export class StrategyRunner {
         });
       }
     });
+
+    // Clean up empty slot entries to prevent memory leak
+    if (!slots.buy.orderId && !slots.sell.orderId) {
+      this.activeOrders.delete(conditionId);
+    }
   }
 }
