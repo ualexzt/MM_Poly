@@ -619,6 +619,22 @@ async function main() {
   }
 
   logger.info('Paper trading active. Press Ctrl+C to stop.');
+
+  // Graceful shutdown
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.warn('Paper shutdown requested; cancelling all orders');
+    for (const order of paperEngine.getOpenOrders()) {
+      paperEngine.cancel(order.id);
+    }
+    ws.disconnect();
+    process.exit(0);
+  };
+
+  process.once('SIGINT', () => { void shutdown(); });
+  process.once('SIGTERM', () => { void shutdown(); });
 }
 
 main().catch(err => {
