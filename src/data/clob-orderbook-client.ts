@@ -1,5 +1,17 @@
 import { BookState, BookLevel } from '../types/book';
 
+const FETCH_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface OrderbookClient {
   fetchBook(conditionId: string, tokenId: string): Promise<BookState>;
 }
@@ -59,7 +71,7 @@ export class ClobApiClient implements OrderbookClient {
   constructor(private baseUrl: string = 'https://clob.polymarket.com') {}
 
   async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
-    const res = await fetch(`${this.baseUrl}/book?token_id=${tokenId}`);
+    const res = await fetchWithTimeout(`${this.baseUrl}/book?token_id=${tokenId}`);
     if (!res.ok) throw new Error(`CLOB API error: ${res.status}`);
     const data = await res.json();
     return mapClobBook(data, tokenId, conditionId);

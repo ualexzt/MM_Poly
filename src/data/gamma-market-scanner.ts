@@ -1,5 +1,17 @@
 import { MarketState } from '../types/market';
 
+const FETCH_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(url: string, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export interface MarketScanner {
   fetchMarkets(): Promise<MarketState[]>;
 }
@@ -44,7 +56,7 @@ export class GammaApiScanner implements MarketScanner {
   constructor(private baseUrl: string = 'https://gamma-api.polymarket.com') {}
 
   async fetchMarkets(): Promise<MarketState[]> {
-    const res = await fetch(
+    const res = await fetchWithTimeout(
       `${this.baseUrl}/markets?active=true&closed=false&limit=50`
     );
     if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
