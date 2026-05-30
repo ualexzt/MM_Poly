@@ -30,6 +30,13 @@ describe('runtime invariants', () => {
     expect(defaultConfig.risk.maxDailyDrawdownUsd).toBeLessThanOrEqual(5);
   });
 
+  test('docker image dispatches small_live mode to the live entrypoint', () => {
+    const dockerfile = readFileSync('Dockerfile', 'utf8');
+
+    expect(dockerfile).toContain('\\"$MODE\\" = \\"small_live');
+    expect(dockerfile).toContain('dist/run-small-live.js');
+  });
+
   test('env example documents wallet address once', () => {
     const envExample = readFileSync('.env.example', 'utf8');
 
