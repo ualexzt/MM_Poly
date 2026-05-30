@@ -36,6 +36,34 @@ describe('runtime invariants', () => {
     expect(envExample.match(/^WALLET_ADDRESS=/gm)).toHaveLength(1);
   });
 
+  test('telegram env vars are optional so startup preflight can report missing alerts', () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      TELEGRAM_BOT_TOKEN: undefined,
+      TELEGRAM_CHAT_ID: undefined,
+    };
+
+    const env = require('../../src/config/env').env;
+
+    expect(env.telegramBotToken).toBeUndefined();
+    expect(env.telegramChatId).toBeUndefined();
+
+    process.env = ORIGINAL_ENV;
+  });
+
+  test('go/no-go numeric env parsing rejects partial numbers', () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      SMALL_LIVE_REALIZED_PNL_EX_REBATES_USD: '1abc',
+    };
+
+    expect(() => require('../../src/config/env')).toThrow('Invalid float for SMALL_LIVE_REALIZED_PNL_EX_REBATES_USD: 1abc');
+
+    process.env = ORIGINAL_ENV;
+  });
+
   test('live trading env flag defaults off and must be explicitly enabled', () => {
     const loadEnv = (value?: string) => {
       jest.resetModules();

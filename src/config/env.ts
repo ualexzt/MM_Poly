@@ -2,8 +2,8 @@ import 'dotenv/config';
 
 export interface EnvConfig {
   nodeEnv: string;
-  telegramBotToken: string;
-  telegramChatId: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
   mode: 'paper' | 'shadow' | 'small_live' | 'disabled';
   minLiquidityUsd: number;
   minVolume24hUsd: number;
@@ -38,20 +38,26 @@ function getEnv(key: string, defaultValue?: string): string {
   return val;
 }
 
+function parseStrictNumber(key: string, val: string): number {
+  const trimmed = val.trim();
+  if (trimmed === '') throw new Error(`Invalid float for ${key}: ${val}`);
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed)) throw new Error(`Invalid float for ${key}: ${val}`);
+  return parsed;
+}
+
 function getEnvInt(key: string, defaultValue: number): number {
   const val = process.env[key];
   if (val === undefined) return defaultValue;
-  const parsed = parseInt(val, 10);
-  if (isNaN(parsed)) throw new Error(`Invalid integer for ${key}: ${val}`);
+  const parsed = parseStrictNumber(key, val);
+  if (!Number.isInteger(parsed)) throw new Error(`Invalid integer for ${key}: ${val}`);
   return parsed;
 }
 
 function getEnvFloat(key: string, defaultValue: number): number {
   const val = process.env[key];
   if (val === undefined) return defaultValue;
-  const parsed = parseFloat(val);
-  if (isNaN(parsed)) throw new Error(`Invalid float for ${key}: ${val}`);
-  return parsed;
+  return parseStrictNumber(key, val);
 }
 
 function getEnvBool(key: string, defaultValue: boolean): boolean {
@@ -66,9 +72,7 @@ function getEnvNullableFloat(key: string, defaultValue: number | null): number |
   const val = process.env[key];
   if (val === undefined || val.trim() === '') return defaultValue;
   if (val === 'null') return null;
-  const parsed = parseFloat(val);
-  if (isNaN(parsed)) throw new Error(`Invalid float for ${key}: ${val}`);
-  return parsed;
+  return parseStrictNumber(key, val);
 }
 
 function getEnvRiskStatus(key: string, defaultValue: 'OK' | 'WARNING' | 'CRITICAL'): 'OK' | 'WARNING' | 'CRITICAL' {
@@ -86,8 +90,8 @@ function getEnvList(key: string, defaultValue: string[]): string[] {
 
 export const env: EnvConfig = {
   nodeEnv: getEnv('NODE_ENV', 'development'),
-  telegramBotToken: getEnv('TELEGRAM_BOT_TOKEN'),
-  telegramChatId: getEnv('TELEGRAM_CHAT_ID'),
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+  telegramChatId: process.env.TELEGRAM_CHAT_ID,
   mode: getEnv('MODE', 'paper') as EnvConfig['mode'],
   minLiquidityUsd: getEnvFloat('MIN_LIQUIDITY_USD', 5000),
   minVolume24hUsd: getEnvFloat('MIN_VOLUME_24H_USD', 10000),

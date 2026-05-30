@@ -18,7 +18,7 @@ const POLL_INTERVAL_MS = 30000; // 30 seconds
 
 async function main() {
   const logger = new ConsoleLogger();
-  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
+  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken ?? '', chatId: env.telegramChatId ?? '' });
   const paperEngine = new PaperExecutionEngine();
   const scanner = new GammaApiScanner();
   const bookClient = new ClobApiClient();

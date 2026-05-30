@@ -1,4 +1,5 @@
 import type { EnvConfig } from '../config/env';
+import type { SmallLiveStartupBlocker } from './small-live-preflight';
 import type { MarketScanner } from '../data/gamma-market-scanner';
 import type { OrderbookClient } from '../data/clob-orderbook-client';
 import { PaperExecutionEngine } from '../simulation/paper-execution-engine';
@@ -120,6 +121,35 @@ export async function cancelAllLiveOrders(liveSubmitter: LiveOrderSubmitter, log
   }
 
   return { total: orderIds.length, failed: failedOrderIds.length, failedOrderIds };
+}
+
+export interface EnsureNoOpenLiveOrdersResult {
+  ok: boolean;
+  cancelResult?: LiveCancelAllResult;
+}
+
+export async function ensureNoOpenLiveOrders(
+  liveSubmitter: LiveOrderSubmitter,
+  envConfig: EnvConfig,
+  logger: Logger,
+  notifyStartupBlockers: (
+    blockers: SmallLiveStartupBlocker[],
+    envConfig: EnvConfig,
+    logger: Logger
+  ) => Promise<void>
+): Promise<EnsureNoOpenLiveOrdersResult> {
+  try {
+    const cancelResult = await cancelAllLiveOrders(liveSubmitter, logger);
+    if (cancelResult.failed > 0) {
+      await notifyStartupBlockers(['startup_cancel_failed'], envConfig, logger);
+      return { ok: false, cancelResult };
+    }
+    return { ok: true, cancelResult };
+  } catch (err) {
+    logger.error('Failed to list/cancel live orders during startup', { error: String(err) });
+    await notifyStartupBlockers(['startup_cancel_failed'], envConfig, logger);
+    return { ok: false };
+  }
 }
 
 export function createSmallLiveStrategyRunner(deps: {

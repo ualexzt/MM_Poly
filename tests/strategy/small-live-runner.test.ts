@@ -8,6 +8,7 @@ import {
   buildTokenConditionMap,
   createTrackingMarketScanner,
   cancelAllLiveOrders,
+  ensureNoOpenLiveOrders,
   handleLiveUserEvent,
 } from '../../src/strategy/small-live-runner';
 import type { EnvConfig } from '../../src/config/env';
@@ -90,6 +91,39 @@ describe('small-live runner wiring', () => {
       total: 2,
       failedOrderIds: ['live-2'],
     });
+  });
+
+  test('notifies startup blocker when listing open live orders fails', async () => {
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'unused' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockRejectedValue(new Error('network down')),
+    };
+    const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+    const notify = jest.fn().mockResolvedValue(undefined);
+
+    const result = await ensureNoOpenLiveOrders(liveSubmitter, envConfig, silentLogger, notify);
+
+    expect(result.ok).toBe(false);
+    expect(result.cancelResult).toBeUndefined();
+    expect(notify).toHaveBeenCalledWith(['startup_cancel_failed'], envConfig, silentLogger);
+    expect(silentLogger.error).toHaveBeenCalledWith('Failed to list/cancel live orders during startup', { error: 'Error: network down' });
+  });
+
+  test('notifies startup blocker when startup live order cancellation fails', async () => {
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'unused' }),
+      cancelOrder: jest.fn().mockRejectedValue(new Error('cancel failed')),
+      getOpenOrders: jest.fn().mockResolvedValue([{ id: 'live-1' }]),
+    };
+    const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+    const notify = jest.fn().mockResolvedValue(undefined);
+
+    const result = await ensureNoOpenLiveOrders(liveSubmitter, envConfig, silentLogger, notify);
+
+    expect(result.ok).toBe(false);
+    expect(result.cancelResult).toEqual({ total: 1, failed: 1, failedOrderIds: ['live-1'] });
+    expect(notify).toHaveBeenCalledWith(['startup_cancel_failed'], envConfig, silentLogger);
   });
 
   test('tracking scanner refreshes token-condition mapping on every fetch', async () => {

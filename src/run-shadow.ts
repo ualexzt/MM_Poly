@@ -19,7 +19,7 @@ const TELEGRAM_COOLDOWN_MS = 60000; // 1 min between alerts for same market
 
 async function main() {
   const logger = new ConsoleLogger();
-  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
+  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken ?? '', chatId: env.telegramChatId ?? '' });
   const scanner = new GammaApiScanner();
   const bookClient = new ClobApiClient();
   const killSwitch = new KillSwitch(defaultConfig.risk);

@@ -43,7 +43,7 @@ interface MarketActiveOrders {
 
 async function main() {
   const logger = new ConsoleLogger();
-  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId });
+  const telegram = new TelegramNotifier({ botToken: env.telegramBotToken ?? '', chatId: env.telegramChatId ?? '' });
   const scanner = new GammaApiScanner();
   const bookClient = new ClobApiClient();
   const paperEngine = new PaperExecutionEngine(defaultConfig.paperExecution);

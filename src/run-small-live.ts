@@ -15,6 +15,7 @@ import { DataApiClient } from './data/data-api-client';
 import {
   buildSmallLiveConfig,
   cancelAllLiveOrders,
+  ensureNoOpenLiveOrders,
   createSmallLiveStrategyRunner,
   createTrackingMarketScanner,
   handleLiveUserEvent,
@@ -31,13 +32,6 @@ async function main() {
   if (!envValidation.ok) {
     logger.error('Refusing live start: startup preflight failed', { blockers: envValidation.blockers });
     await notifyStartupBlockers(envValidation.blockers, env, logger);
-    process.exit(1);
-  }
-
-  const goNoGoBlockers = buildGoNoGoStartupBlockersFromEnv(env);
-  if (goNoGoBlockers.length > 0) {
-    logger.error('Refusing live start: small_live go/no-go failed', { blockers: goNoGoBlockers });
-    await notifyStartupBlockers(goNoGoBlockers, env, logger);
     process.exit(1);
   }
 
@@ -78,6 +72,21 @@ async function main() {
 
   logger.info('Live order submitter initialized');
   logger.info('Wallet address', { address: account.address });
+
+  const startupCancel = await ensureNoOpenLiveOrders(liveSubmitter, env, logger, notifyStartupBlockers);
+  if (!startupCancel.ok) {
+    logger.error('Refusing live start: failed to cancel existing live orders', startupCancel.cancelResult ? { ...startupCancel.cancelResult } : undefined);
+    process.exit(1);
+  }
+  logger.info('Startup live order cleanup complete', { ...startupCancel.cancelResult });
+
+  const goNoGoBlockers = buildGoNoGoStartupBlockersFromEnv(env);
+  if (goNoGoBlockers.length > 0) {
+    logger.error('Refusing live start: small_live go/no-go failed', { blockers: goNoGoBlockers });
+    await notifyStartupBlockers(goNoGoBlockers, env, logger);
+    process.exit(1);
+  }
+
   const config = buildSmallLiveConfig(env);
   const tokenConditionIds = new Map<string, string>();
   const scanner = createTrackingMarketScanner(new GammaApiScanner(), tokenConditionIds);
@@ -105,14 +114,6 @@ async function main() {
     await notifyStartupBlockers(['position_reconciliation_failed'], env, logger);
     process.exit(1);
   }
-
-  const startupCancel = await cancelAllLiveOrders(liveSubmitter, logger);
-  if (startupCancel.failed > 0) {
-    logger.error('Refusing live start: failed to cancel existing live orders', { ...startupCancel });
-    await notifyStartupBlockers(['startup_cancel_failed'], env, logger);
-    process.exit(1);
-  }
-  logger.info('Startup live order cleanup complete', { ...startupCancel });
 
   const userStream = new WsUserStream(
     'wss://ws-subscriptions-clob.polymarket.com/ws/user',
