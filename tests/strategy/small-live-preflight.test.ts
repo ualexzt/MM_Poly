@@ -1,6 +1,7 @@
 import type { EnvConfig } from '../../src/config/env';
 import {
   buildGoNoGoStartupBlockers,
+  buildGoNoGoStartupBlockersFromEnv,
   notifyStartupBlockers,
   validateSmallLiveStartupEnv,
 } from '../../src/strategy/small-live-preflight';
@@ -24,6 +25,12 @@ const baseEnv: EnvConfig = {
   clobApiSecret: 'clob-secret',
   clobApiPassphrase: 'clob-passphrase',
   walletAddress: '0xabc',
+  smallLiveRiskStatus: 'OK',
+  smallLiveRiskReasons: [],
+  smallLiveRealizedPnlExRebatesUsd: 1,
+  smallLiveWorstTopInventoryExitPnlUsd: -0.1,
+  smallLiveTestsPassing: true,
+  smallLiveBuildPassing: true,
 };
 
 const logger = {
@@ -82,5 +89,22 @@ describe('small-live startup preflight', () => {
     });
 
     expect(blockers).toEqual(['go_no_go:realized_pnl_ex_rebates_not_positive']);
+  });
+
+  test('converts configured go/no-go env fields into startup blockers', () => {
+    const blockers = buildGoNoGoStartupBlockersFromEnv({
+      ...baseEnv,
+      smallLiveRealizedPnlExRebatesUsd: 0,
+      smallLiveTestsPassing: false,
+    });
+
+    expect(blockers).toEqual([
+      'go_no_go:realized_pnl_ex_rebates_not_positive',
+      'go_no_go:tests_not_passing',
+    ]);
+  });
+
+  test('returns no go/no-go blockers when configured paper-soak inputs pass', () => {
+    expect(buildGoNoGoStartupBlockersFromEnv(baseEnv)).toEqual([]);
   });
 });

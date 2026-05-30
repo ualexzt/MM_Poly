@@ -48,6 +48,17 @@ export function buildGoNoGoStartupBlockers(input: SmallLiveGoNoGoInput): SmallLi
   return evaluateSmallLiveGoNoGo(input).blockers.map((blocker) => `go_no_go:${blocker}` as const);
 }
 
+export function buildGoNoGoStartupBlockersFromEnv(envConfig: EnvConfig): SmallLiveStartupBlocker[] {
+  return buildGoNoGoStartupBlockers({
+    riskStatus: envConfig.smallLiveRiskStatus,
+    reasons: envConfig.smallLiveRiskReasons,
+    realizedPnlExRebatesUsd: envConfig.smallLiveRealizedPnlExRebatesUsd,
+    worstTopInventoryExitPnlUsd: envConfig.smallLiveWorstTopInventoryExitPnlUsd,
+    testsPassing: envConfig.smallLiveTestsPassing,
+    buildPassing: envConfig.smallLiveBuildPassing,
+  });
+}
+
 export async function notifyStartupBlockers(
   blockers: SmallLiveStartupBlocker[],
   envConfig: EnvConfig,

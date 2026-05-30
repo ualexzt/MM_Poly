@@ -30,6 +30,12 @@ const envConfig: EnvConfig = {
   dailyReportMinute: 0,
   maxMarkets: 20,
   liveTradingEnabled: true,
+  smallLiveRiskStatus: 'OK',
+  smallLiveRiskReasons: [],
+  smallLiveRealizedPnlExRebatesUsd: 1,
+  smallLiveWorstTopInventoryExitPnlUsd: -0.1,
+  smallLiveTestsPassing: true,
+  smallLiveBuildPassing: true,
 };
 
 const silentLogger: Logger = {

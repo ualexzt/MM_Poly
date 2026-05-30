@@ -1,3 +1,4 @@
+import { readFileSync } from 'fs';
 import { defaultConfig } from '../../src/strategy/config';
 
 const ORIGINAL_ENV = process.env;
@@ -27,6 +28,12 @@ describe('runtime invariants', () => {
     expect(defaultConfig.size.baseOrderSizeUsd).toBeLessThanOrEqual(1);
     expect(defaultConfig.size.maxOrderSizeUsd).toBeLessThanOrEqual(1.5);
     expect(defaultConfig.risk.maxDailyDrawdownUsd).toBeLessThanOrEqual(5);
+  });
+
+  test('env example documents wallet address once', () => {
+    const envExample = readFileSync('.env.example', 'utf8');
+
+    expect(envExample.match(/^WALLET_ADDRESS=/gm)).toHaveLength(1);
   });
 
   test('live trading env flag defaults off and must be explicitly enabled', () => {

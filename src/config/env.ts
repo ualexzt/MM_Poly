@@ -21,6 +21,12 @@ export interface EnvConfig {
   relayerApiKey?: string;
   relayerApiKeyAddress?: string;
   walletAddress?: string;
+  smallLiveRiskStatus: 'OK' | 'WARNING' | 'CRITICAL';
+  smallLiveRiskReasons: string[];
+  smallLiveRealizedPnlExRebatesUsd: number;
+  smallLiveWorstTopInventoryExitPnlUsd: number | null;
+  smallLiveTestsPassing: boolean;
+  smallLiveBuildPassing: boolean;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -56,6 +62,28 @@ function getEnvBool(key: string, defaultValue: boolean): boolean {
   throw new Error(`Invalid boolean for ${key}: ${val}`);
 }
 
+function getEnvNullableFloat(key: string, defaultValue: number | null): number | null {
+  const val = process.env[key];
+  if (val === undefined || val.trim() === '') return defaultValue;
+  if (val === 'null') return null;
+  const parsed = parseFloat(val);
+  if (isNaN(parsed)) throw new Error(`Invalid float for ${key}: ${val}`);
+  return parsed;
+}
+
+function getEnvRiskStatus(key: string, defaultValue: 'OK' | 'WARNING' | 'CRITICAL'): 'OK' | 'WARNING' | 'CRITICAL' {
+  const val = process.env[key];
+  if (val === undefined) return defaultValue;
+  if (val === 'OK' || val === 'WARNING' || val === 'CRITICAL') return val;
+  throw new Error(`Invalid risk status for ${key}: ${val}`);
+}
+
+function getEnvList(key: string, defaultValue: string[]): string[] {
+  const val = process.env[key];
+  if (val === undefined || val.trim() === '') return defaultValue;
+  return val.split(',').map((v) => v.trim()).filter((v) => v.length > 0);
+}
+
 export const env: EnvConfig = {
   nodeEnv: getEnv('NODE_ENV', 'development'),
   telegramBotToken: getEnv('TELEGRAM_BOT_TOKEN'),
@@ -77,4 +105,10 @@ export const env: EnvConfig = {
   relayerApiKey: process.env.RELAYER_API_KEY,
   relayerApiKeyAddress: process.env.RELAYER_API_KEY_ADDRESS,
   walletAddress: process.env.WALLET_ADDRESS,
+  smallLiveRiskStatus: getEnvRiskStatus('SMALL_LIVE_RISK_STATUS', 'CRITICAL'),
+  smallLiveRiskReasons: getEnvList('SMALL_LIVE_RISK_REASONS', []),
+  smallLiveRealizedPnlExRebatesUsd: getEnvFloat('SMALL_LIVE_REALIZED_PNL_EX_REBATES_USD', 0),
+  smallLiveWorstTopInventoryExitPnlUsd: getEnvNullableFloat('SMALL_LIVE_WORST_TOP_INVENTORY_EXIT_PNL_USD', null),
+  smallLiveTestsPassing: getEnvBool('SMALL_LIVE_TESTS_PASSING', false),
+  smallLiveBuildPassing: getEnvBool('SMALL_LIVE_BUILD_PASSING', false),
 };

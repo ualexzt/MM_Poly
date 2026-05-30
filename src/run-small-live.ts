@@ -19,7 +19,7 @@ import {
   createTrackingMarketScanner,
   handleLiveUserEvent,
 } from './strategy/small-live-runner';
-import { notifyStartupBlockers, validateSmallLiveStartupEnv } from './strategy/small-live-preflight';
+import { buildGoNoGoStartupBlockersFromEnv, notifyStartupBlockers, validateSmallLiveStartupEnv } from './strategy/small-live-preflight';
 
 const logger = new ConsoleLogger();
 
@@ -31,6 +31,13 @@ async function main() {
   if (!envValidation.ok) {
     logger.error('Refusing live start: startup preflight failed', { blockers: envValidation.blockers });
     await notifyStartupBlockers(envValidation.blockers, env, logger);
+    process.exit(1);
+  }
+
+  const goNoGoBlockers = buildGoNoGoStartupBlockersFromEnv(env);
+  if (goNoGoBlockers.length > 0) {
+    logger.error('Refusing live start: small_live go/no-go failed', { blockers: goNoGoBlockers });
+    await notifyStartupBlockers(goNoGoBlockers, env, logger);
     process.exit(1);
   }
 
