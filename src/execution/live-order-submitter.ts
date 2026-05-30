@@ -6,7 +6,7 @@ export interface LiveOrderSubmitterClient {
       tokenID: string;
       side: 'BUY' | 'SELL';
       price: number;
-      size: number;
+      size: string | number;
     },
     options: { tickSize: string; negRisk: boolean },
     orderType: 'GTC' | 'FOK' | 'FAK'
