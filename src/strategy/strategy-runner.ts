@@ -122,10 +122,28 @@ export class StrategyRunner {
       if (ks === 'DISABLE_STRATEGY') return;
     }
 
-    // §11.1 step 1 — Fetch and filter markets
+    // §11.1 step 1 — Fetch markets
     const markets = await scanner.fetchMarkets();
     this.catalystGuard.syncFromMarkets(markets);
-    const eligible = filterEligibleMarkets(markets, config.marketFilter);
+    
+    // Phase 1: Basic filters (no book data needed)
+    const basicEligible = filterEligibleMarkets(markets, config.marketFilter);
+    const basicActive = this.deps.maxMarkets != null ? basicEligible.slice(0, this.deps.maxMarkets) : basicEligible;
+    
+    // Phase 2: Pre-fetch books for basic-eligible markets
+    for (const market of basicActive) {
+      try {
+        const yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
+        const noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
+        this.books.set(market.yesTokenId, yesBook);
+        this.books.set(market.noTokenId, noBook);
+      } catch (err) {
+        logger.warn('Failed to pre-fetch book', { conditionId: market.conditionId, error: String(err) });
+      }
+    }
+    
+    // Phase 3: Re-filter with book data (spread, depth, midpoint filters)
+    const eligible = filterEligibleMarkets(markets, config.marketFilter, this.books);
     const activeMarkets = this.deps.maxMarkets != null ? eligible.slice(0, this.deps.maxMarkets) : eligible;
     await this._cancelOrdersOutsideActiveUniverse(new Set(activeMarkets.map((market) => market.conditionId)));
 
@@ -141,11 +159,15 @@ export class StrategyRunner {
   private async processMarket(market: MarketState): Promise<void> {
     const { config, bookClient, paperEngine, logger } = this.deps;
 
-    // §11.1 step 2 — Fetch/update books
-    const yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
-    const noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
-    this.books.set(market.yesTokenId, yesBook);
-    this.books.set(market.noTokenId, noBook);
+    // §11.1 step 2 — Use cached books or fetch if missing
+    let yesBook = this.books.get(market.yesTokenId);
+    let noBook = this.books.get(market.noTokenId);
+    if (!yesBook || !noBook) {
+      yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
+      noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
+      this.books.set(market.yesTokenId, yesBook);
+      this.books.set(market.noTokenId, noBook);
+    }
 
     // §11.1 step 5 — Hard risk checks
 
