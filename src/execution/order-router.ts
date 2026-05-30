@@ -59,6 +59,7 @@ export class OrderRouter {
     });
 
     if (!validation.valid) {
+      console.log('ORDER_ROUTER_REJECTED', { reason: validation.reason, side: quote.side, price: quote.price, tokenId: quote.tokenId?.slice(0,20) });
       return { submitted: false, reason: validation.reason };
     }
 
