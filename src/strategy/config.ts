@@ -12,7 +12,7 @@ export const defaultConfig: StrategyConfig = {
     midpointMin: 0.15, midpointMax: 0.85,
     minVolume24hUsd: 10000, minLiquidityUsd: 5000,
     minBestLevelDepthUsd: 100, minDepth3LevelsUsd: 500,
-    minSpreadTicks: 3, maxSpreadCents: 8,
+    minSpreadTicks: 3, maxSpreadCents: 100,
     minTimeToResolutionMinutes: 90, disableNearResolutionMinutes: 30,
     maxOracleAmbiguityScore: 0.20, requireValidResolutionSource: false
   },
