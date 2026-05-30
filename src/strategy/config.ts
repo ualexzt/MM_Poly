@@ -72,7 +72,7 @@ export const defaultConfig: StrategyConfig = {
     fillFractionAfterQueue: 0.5,
   },
   refreshIntervalMs: 1000,
-  staleOrderMaxAgeMs: 2500,
+  staleOrderMaxAgeMs: 30_000,
   minQuoteLifetimeMs: 500,
   maxQuoteLifetimeMs: 10000
 };
