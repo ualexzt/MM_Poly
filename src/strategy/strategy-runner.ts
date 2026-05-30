@@ -150,7 +150,10 @@ export class StrategyRunner {
     // §11.1 step 5 — Hard risk checks
 
     // Stale book guard (§8.4)
-    if (isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs)) {
+    if (
+      isBookStale(yesBook.lastUpdateMs, config.staleOrderMaxAgeMs) ||
+      isBookStale(noBook.lastUpdateMs, config.staleOrderMaxAgeMs)
+    ) {
       logger.warn('Stale book — skipping market', { conditionId: market.conditionId });
       await this._cancelMarketOrders(market.conditionId);
       return;
@@ -361,6 +364,10 @@ export class StrategyRunner {
           killSwitchActive: false,
         }
       );
+
+      if (routeResult.cancelledExistingOrderId && slot.orderId === routeResult.cancelledExistingOrderId) {
+        slot.orderId = null;
+      }
 
       if (routeResult.submitted && routeResult.orderId) {
         if (side === 'BUY') {

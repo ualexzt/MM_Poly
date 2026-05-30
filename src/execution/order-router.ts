@@ -14,6 +14,7 @@ export interface RouteResult {
   submitted: boolean;
   orderId?: string;
   reason: string;
+  cancelledExistingOrderId?: string;
 }
 
 /**
@@ -105,10 +106,12 @@ export class OrderRouter {
         return { submitted: false, reason: 'post_only_unsafe' };
       }
 
+      let cancelledExistingOrderId: string | undefined;
       try {
         // Cancel existing live order before placing new one
         if (existingOrderId) {
           await this.liveSubmitter.cancel(existingOrderId);
+          cancelledExistingOrderId = existingOrderId;
         }
 
         const orderId = await this.liveSubmitter.submit(quote, {
@@ -116,10 +119,10 @@ export class OrderRouter {
           negRisk: false, // TODO: detect from market metadata
         });
 
-        return { submitted: true, orderId, reason: 'live_submitted' };
+        return { submitted: true, orderId, reason: 'live_submitted', cancelledExistingOrderId };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        return { submitted: false, reason: `live_error:${message}` };
+        return { submitted: false, reason: `live_error:${message}`, cancelledExistingOrderId };
       }
     }
 
