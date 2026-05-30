@@ -150,6 +150,7 @@ export class StrategyRunner {
     // Phase 3: Re-filter with book data (spread, depth, midpoint filters)
     const eligible = filterEligibleMarkets(markets, config.marketFilter, this.books);
     const activeMarkets = this.deps.maxMarkets != null ? eligible.slice(0, this.deps.maxMarkets) : eligible;
+    logger.info('CYCLE_REFILTER', { eligible: eligible.length, active: activeMarkets.length });
     await this._cancelOrdersOutsideActiveUniverse(new Set(activeMarkets.map((market) => market.conditionId)));
 
     for (const market of activeMarkets) {
