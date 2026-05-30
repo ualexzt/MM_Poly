@@ -24,6 +24,7 @@ export class LiveOrderSubmitter {
   constructor(private client: LiveOrderSubmitterClient) {}
 
   async submit(quote: QuoteCandidate, meta: LiveMarketMeta): Promise<string> {
+    console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_START', tokenId: quote.tokenId?.slice(0,20), side: quote.side, price: quote.price, size: quote.size, tickSize: meta.tickSize, negRisk: meta.negRisk }));
     const resp = await this.client.createAndPostOrder(
       {
         tokenID: quote.tokenId,
@@ -37,6 +38,7 @@ export class LiveOrderSubmitter {
       },
       'GTC'
     );
+    console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', orderId: resp.orderID }));
     return resp.orderID;
   }
 
