@@ -8,7 +8,7 @@ export interface LiveOrderSubmitterClient {
       price: string | number;
       size: string | number;
     },
-    options: { tickSize: string; negRisk: boolean },
+    options: { tickSize: string; negRisk?: boolean },
     orderType: 'GTC' | 'FOK' | 'FAK'
   ): Promise<{ orderID: string }>;
   cancelOrder(orderId: string): Promise<any>;
