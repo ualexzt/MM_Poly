@@ -58,6 +58,7 @@ async function main() {
       secret: clobApiSecret,
       passphrase: clobApiPassphrase,
     },
+    funderAddress: walletAddress,
   });
 
   // Test connectivity

@@ -27,6 +27,7 @@ async function main() {
     host: 'https://clob.polymarket.com',
     chain: Chain.POLYGON,
     signer: walletClient,
+    funderAddress: process.env.WALLET_ADDRESS,
   });
 
   console.log('Deriving CLOB API key from wallet...');
