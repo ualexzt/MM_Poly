@@ -379,6 +379,7 @@ export class StrategyRunner {
       }
 
       // §11.2 — Route through cancel-replace
+      console.log('CALLING_ORDER_ROUTER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20) });
       const routeResult = await this.orderRouter.route(
         candidate,
         yesBook,
