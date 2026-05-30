@@ -58,6 +58,7 @@ async function main() {
       secret: clobApiSecret,
       passphrase: clobApiPassphrase,
     },
+    signatureType: 3, // POLY_1271 — deposit wallet flow for API traders
     funderAddress: walletAddress,
   });
 

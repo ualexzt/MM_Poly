@@ -27,6 +27,7 @@ async function main() {
     host: 'https://clob.polymarket.com',
     chain: Chain.POLYGON,
     signer: walletClient,
+    signatureType: 3, // POLY_1271
     funderAddress: process.env.WALLET_ADDRESS,
   });
 
