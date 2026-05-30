@@ -38,7 +38,7 @@ export class LiveOrderSubmitter {
       },
       'GTC'
     );
-    console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', orderId: resp.orderID }));
+    console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', resp: JSON.stringify(resp).slice(0, 200) }));
     return resp.orderID;
   }
 
