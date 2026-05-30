@@ -185,9 +185,9 @@ export function generateQuoteCandidate(inputs: QuoteEngineInputs): QuoteEngineRe
   } = inputs;
 
   // Safety guards
-  if (isBookStale) { console.log('QUOTE_NULL: isBookStale'); return null; }
-  if (!book.bestBid || !book.bestAsk) { console.log('QUOTE_NULL: no bestBid/bestAsk'); return null; }
-  if (inventoryThrottle?.blocked) { console.log('QUOTE_NULL: inventoryThrottle blocked'); return null; }
+  if (isBookStale) return null;
+  if (!book.bestBid || !book.bestAsk) return null;
+  if (inventoryThrottle?.blocked) return null;
 
   const inventoryAction: 'below_soft_limit' | 'above_soft_limit' | 'above_hard_limit' =
     inventoryPct > 65 ? 'above_hard_limit' :
@@ -230,7 +230,7 @@ export function generateQuoteCandidate(inputs: QuoteEngineInputs): QuoteEngineRe
   }
 
   // Price must be in (0, 1)
-  if (price <= 0 || price >= 1) { console.log('QUOTE_NULL: price out of range', { price, side, fairPrice, halfSpread }); return null; }
+  if (price <= 0 || price >= 1) return null;
 
   // Compute size
   const tokenSize = computeQuoteSize(

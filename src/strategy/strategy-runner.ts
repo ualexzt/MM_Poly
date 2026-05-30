@@ -374,12 +374,13 @@ export class StrategyRunner {
       this.deps.logger.trace(trace);
 
       if (!exposureAllowed) {
-        console.log('EXPOSURE_BLOCKED', { side, conditionId: market.conditionId, reason: exposureCheck.reason });
+        logger.info('EXPOSURE_BLOCKED', { side, conditionId: market.conditionId, reason: exposureCheck.reason });
         continue;
       }
 
       // §11.2 — Route through cancel-replace
-      logger.info('ROUTING_ORDER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20) });
+      logger.info('ROUTING_ORDER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20), orderId: slot.orderId });
+      logger.info('ROUTE_CALL_START', { side, conditionId: market.conditionId });
       const routeResult = await this.orderRouter.route(
         candidate,
         yesBook,
