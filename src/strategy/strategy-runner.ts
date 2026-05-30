@@ -131,10 +131,12 @@ export class StrategyRunner {
     // Phase 1: Basic filters (no book data needed)
     const basicEligible = filterEligibleMarkets(markets, config.marketFilter);
     const basicActive = this.deps.maxMarkets != null ? basicEligible.slice(0, this.deps.maxMarkets) : basicEligible;
+    logger.info('CYCLE_BASIC_FILTER', { eligible: basicEligible.length, active: basicActive.length });
     
     // Phase 2: Pre-fetch books for basic-eligible markets
     for (const market of basicActive) {
       try {
+        logger.info('CYCLE_PREFETCH_BOOK', { conditionId: market.conditionId?.slice(0, 20) });
         const yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
         const noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
         this.books.set(market.yesTokenId, yesBook);
@@ -143,6 +145,7 @@ export class StrategyRunner {
         logger.warn('Failed to pre-fetch book', { conditionId: market.conditionId, error: String(err) });
       }
     }
+    logger.info('CYCLE_PREFETCH_DONE');
     
     // Phase 3: Re-filter with book data (spread, depth, midpoint filters)
     const eligible = filterEligibleMarkets(markets, config.marketFilter, this.books);
