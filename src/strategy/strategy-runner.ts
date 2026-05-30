@@ -334,6 +334,7 @@ export class StrategyRunner {
       });
 
       if (!result) {
+        console.log('NO_QUOTE_CANDIDATE', { side, conditionId: market.conditionId, fairPrice: yesFair.fairPrice, bestBid: yesBook.bestBid, bestAsk: yesBook.bestAsk, spreadTicks: yesBook.spreadTicks });
         logger.info('No valid quote candidate', { conditionId: market.conditionId, side });
         continue;
       }
