@@ -94,17 +94,32 @@ export function handleLiveUserEvent(
   }, fill.filledPrice);
 }
 
-export async function cancelAllLiveOrders(liveSubmitter: LiveOrderSubmitter, logger: Logger): Promise<void> {
+export interface LiveCancelAllResult {
+  total: number;
+  failed: number;
+  failedOrderIds: string[];
+}
+
+export async function cancelAllLiveOrders(liveSubmitter: LiveOrderSubmitter, logger: Logger): Promise<LiveCancelAllResult> {
   const openOrders = await liveSubmitter.getOpenOrders();
   const orderIds = openOrders
     .map((order) => order.id ?? order.orderID ?? order.orderId)
     .filter((orderId): orderId is string => typeof orderId === 'string' && orderId.length > 0);
 
   const results = await Promise.allSettled(orderIds.map((orderId) => liveSubmitter.cancel(orderId)));
-  const failed = results.filter((result) => result.status === 'rejected').length;
-  if (failed > 0) {
-    logger.error('Failed to cancel some live orders during shutdown', { failed, total: orderIds.length });
+  const failedOrderIds = results
+    .map((result, index) => result.status === 'rejected' ? orderIds[index] : null)
+    .filter((orderId): orderId is string => orderId !== null);
+
+  if (failedOrderIds.length > 0) {
+    logger.error('Failed to cancel some live orders', {
+      failed: failedOrderIds.length,
+      total: orderIds.length,
+      failedOrderIds,
+    });
   }
+
+  return { total: orderIds.length, failed: failedOrderIds.length, failedOrderIds };
 }
 
 export function createSmallLiveStrategyRunner(deps: {

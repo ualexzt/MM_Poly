@@ -61,10 +61,29 @@ describe('small-live runner wiring', () => {
     };
     const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
 
-    await cancelAllLiveOrders(liveSubmitter, silentLogger);
+    const result = await cancelAllLiveOrders(liveSubmitter, silentLogger);
 
+    expect(result).toEqual({ total: 2, failed: 0, failedOrderIds: [] });
     expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-1');
     expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-2');
+  });
+
+  test('returns failed live order cancellations to the caller', async () => {
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'unused' }),
+      cancelOrder: jest.fn((orderId: string) => orderId === 'live-2' ? Promise.reject(new Error('cancel failed')) : Promise.resolve({})),
+      getOpenOrders: jest.fn().mockResolvedValue([{ id: 'live-1' }, { orderID: 'live-2' }]),
+    };
+    const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+
+    const result = await cancelAllLiveOrders(liveSubmitter, silentLogger);
+
+    expect(result).toEqual({ total: 2, failed: 1, failedOrderIds: ['live-2'] });
+    expect(silentLogger.error).toHaveBeenCalledWith('Failed to cancel some live orders', {
+      failed: 1,
+      total: 2,
+      failedOrderIds: ['live-2'],
+    });
   });
 
   test('tracking scanner refreshes token-condition mapping on every fetch', async () => {
