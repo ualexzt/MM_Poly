@@ -5,7 +5,7 @@ export interface LiveOrderSubmitterClient {
     orderArgs: {
       tokenID: string;
       side: 'BUY' | 'SELL';
-      price: number;
+      price: string | number;
       size: string | number;
     },
     options: { tickSize: string; negRisk: boolean },
@@ -29,7 +29,7 @@ export class LiveOrderSubmitter {
       {
         tokenID: quote.tokenId,
         side: quote.side,
-        price: quote.price,
+        price: String(quote.price),
         size: String(quote.size),
       },
       {
