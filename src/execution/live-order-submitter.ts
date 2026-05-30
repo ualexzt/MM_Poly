@@ -30,7 +30,7 @@ export class LiveOrderSubmitter {
         tokenID: quote.tokenId,
         side: quote.side,
         price: quote.price,
-        size: quote.size,
+        size: String(quote.size),
       },
       {
         tickSize: String(meta.tickSize),
