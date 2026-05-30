@@ -116,7 +116,6 @@ export class OrderRouter {
 
         const orderId = await this.liveSubmitter.submit(quote, {
           tickSize: book.tickSize,
-          negRisk: false, // TODO: detect from market metadata
         });
 
         return { submitted: true, orderId, reason: 'live_submitted', cancelledExistingOrderId };

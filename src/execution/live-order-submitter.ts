@@ -17,7 +17,7 @@ export interface LiveOrderSubmitterClient {
 
 export interface LiveMarketMeta {
   tickSize: number;
-  negRisk: boolean;
+  negRisk?: boolean;
 }
 
 export class LiveOrderSubmitter {
@@ -34,7 +34,7 @@ export class LiveOrderSubmitter {
       },
       {
         tickSize: String(meta.tickSize),
-        negRisk: meta.negRisk,
+        ...(meta.negRisk !== undefined ? { negRisk: meta.negRisk } : {}),
       },
       'GTC'
     );
