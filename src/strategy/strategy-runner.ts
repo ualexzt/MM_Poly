@@ -334,14 +334,11 @@ export class StrategyRunner {
       });
 
       if (!result) {
-        console.log('NO_QUOTE_CANDIDATE', { side, conditionId: market.conditionId, fairPrice: yesFair.fairPrice, bestBid: yesBook.bestBid, bestAsk: yesBook.bestAsk, spreadTicks: yesBook.spreadTicks });
         logger.info('No valid quote candidate', { conditionId: market.conditionId, side });
         continue;
       }
 
       const { candidate } = result;
-
-      console.log('QUOTE_CANDIDATE_GENERATED', { side, price: candidate.price, size: candidate.size, tokenId: market.yesTokenId?.slice(0,20) });
 
       // §5 / §12.2 — Exposure limits check before submit (C5)
       const exposureCheck = checkExposureLimits(invState, config.inventory);
@@ -382,7 +379,7 @@ export class StrategyRunner {
       }
 
       // §11.2 — Route through cancel-replace
-      console.log('CALLING_ORDER_ROUTER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20) });
+      logger.info('ROUTING_ORDER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20) });
       const routeResult = await this.orderRouter.route(
         candidate,
         yesBook,
