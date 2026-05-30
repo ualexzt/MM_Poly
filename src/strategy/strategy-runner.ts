@@ -373,7 +373,10 @@ export class StrategyRunner {
 
       this.deps.logger.trace(trace);
 
-      if (!exposureAllowed) continue;
+      if (!exposureAllowed) {
+        console.log('EXPOSURE_BLOCKED', { side, conditionId: market.conditionId, reason: exposureCheck.reason });
+        continue;
+      }
 
       // §11.2 — Route through cancel-replace
       const routeResult = await this.orderRouter.route(
