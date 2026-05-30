@@ -47,6 +47,14 @@ export class LiveOrderSubmitter {
   }
 
   async getOpenOrders(): Promise<any[]> {
-    return this.client.getOpenOrders();
+    try {
+      const result = await this.client.getOpenOrders();
+      if (Array.isArray(result)) return result;
+      if (result && Array.isArray(result.orders)) return result.orders;
+      if (result && Array.isArray(result.data)) return result.data;
+      return [];
+    } catch {
+      return [];
+    }
   }
 }
