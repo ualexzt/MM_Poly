@@ -145,7 +145,7 @@ export class StrategyRunner {
         logger.warn('Failed to pre-fetch book', { conditionId: market.conditionId, error: String(err) });
       }
     }
-    logger.info('CYCLE_PREFETCH_DONE');
+    logger.info('CYCLE_PREFETCH_DONE', { booksSize: this.books.size });
     
     // Phase 3: Re-filter with book data (spread, depth, midpoint filters)
     const eligible = filterEligibleMarkets(markets, config.marketFilter, this.books);
