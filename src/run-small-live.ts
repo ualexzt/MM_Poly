@@ -119,7 +119,7 @@ async function main() {
 
   const userStream = new WsUserStream(
     'wss://ws-subscriptions-clob.polymarket.com/ws/user',
-    clobApiKey,
+    { apiKey: clobApiKey, secret: env.clobApiSecret ?? '', passphrase: env.clobApiPassphrase ?? '' },
     (event) => {
       if (event.type === 'connect') logger.info('User stream connected');
       if (event.type === 'disconnect') logger.warn('User stream disconnected');

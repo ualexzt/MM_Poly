@@ -36,6 +36,12 @@ export type UserStreamEvent =
 
 export type UserStreamHandler = (event: UserStreamEvent) => void;
 
+export interface WsUserCreds {
+  apiKey: string;
+  secret: string;
+  passphrase: string;
+}
+
 export class WsUserStream {
   private ws: WebSocket | null = null;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -47,7 +53,7 @@ export class WsUserStream {
 
   constructor(
     private url: string = 'wss://ws-subscriptions-clob.polymarket.com/ws/user',
-    private apiKey: string,
+    private creds: WsUserCreds,
     private onEvent: UserStreamHandler,
     private onError?: (err: Error) => void
   ) {}
@@ -94,7 +100,14 @@ export class WsUserStream {
 
   private subscribe(): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-    this.ws.send(JSON.stringify({ type: 'user', apiKey: this.apiKey }));
+    this.ws.send(JSON.stringify({
+      type: 'user',
+      auth: {
+        apiKey: this.creds.apiKey,
+        secret: this.creds.secret,
+        passphrase: this.creds.passphrase,
+      },
+    }));
   }
 
   private handleMessage(msg: any): void {
