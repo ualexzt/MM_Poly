@@ -455,11 +455,6 @@ async function main() {
     }
   }
 
-  // Initial evaluation
-  for (const market of activeMarkets) {
-    evaluateMarket(market);
-  }
-
   // WebSocket
   const ws = new WsMarketStream(
     'wss://ws-subscriptions-clob.polymarket.com/ws/market',
@@ -479,6 +474,11 @@ async function main() {
       logger.error('WS error', { error: err.message });
     }
   );
+
+  // Initial evaluation
+  for (const market of activeMarkets) {
+    evaluateMarket(market);
+  }
 
   ws.connect(tokenIds);
 
