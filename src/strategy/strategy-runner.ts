@@ -340,6 +340,8 @@ export class StrategyRunner {
 
       const { candidate } = result;
 
+      console.log('QUOTE_CANDIDATE_GENERATED', { side, price: candidate.price, size: candidate.size, tokenId: market.yesTokenId?.slice(0,20) });
+
       // §5 / §12.2 — Exposure limits check before submit (C5)
       const exposureCheck = checkExposureLimits(invState, config.inventory);
       const exposureAllowed = exposureCheck.allowed || side === 'SELL'; // sells reduce exposure
