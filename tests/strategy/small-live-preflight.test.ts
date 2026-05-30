@@ -1,0 +1,86 @@
+import type { EnvConfig } from '../../src/config/env';
+import {
+  buildGoNoGoStartupBlockers,
+  notifyStartupBlockers,
+  validateSmallLiveStartupEnv,
+} from '../../src/strategy/small-live-preflight';
+
+const baseEnv: EnvConfig = {
+  nodeEnv: 'test',
+  telegramBotToken: 'telegram-token',
+  telegramChatId: 'telegram-chat',
+  mode: 'small_live',
+  minLiquidityUsd: 5000,
+  minVolume24hUsd: 10000,
+  maxSpreadCents: 8,
+  maxExposureUsd: 25,
+  maxDrawdownPct: 0.02,
+  dailyReportHour: 20,
+  dailyReportMinute: 0,
+  maxMarkets: 20,
+  liveTradingEnabled: true,
+  privateKey: `0x${'a'.repeat(64)}`,
+  clobApiKey: 'clob-key',
+  clobApiSecret: 'clob-secret',
+  clobApiPassphrase: 'clob-passphrase',
+  walletAddress: '0xabc',
+};
+
+const logger = {
+  info: jest.fn(),
+  warn: jest.fn(),
+  error: jest.fn(),
+  trace: jest.fn(),
+};
+
+describe('small-live startup preflight', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn().mockResolvedValue({ json: async () => ({ ok: true }) }) as any;
+  });
+
+  test('blocks startup when WALLET_ADDRESS is missing', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, walletAddress: undefined });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('missing_wallet_address');
+  });
+
+  test('blocks startup when private key format is invalid', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, privateKey: '0xnot-hex' });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('invalid_private_key');
+  });
+
+  test('sends Telegram alert when blockers exist and Telegram credentials are configured', async () => {
+    await notifyStartupBlockers(['missing_wallet_address', 'startup_cancel_failed'], baseEnv, logger);
+
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+    const [, request] = (global.fetch as jest.Mock).mock.calls[0];
+    const body = request.body as URLSearchParams;
+    expect(body.get('text')).toContain('small_live startup blocked');
+    expect(body.get('text')).toContain('missing_wallet_address');
+    expect(body.get('text')).toContain('startup_cancel_failed');
+  });
+
+  test('skips Telegram alert when Telegram credentials are missing', async () => {
+    await notifyStartupBlockers(['missing_wallet_address'], { ...baseEnv, telegramBotToken: '', telegramChatId: '' }, logger);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith('Telegram credentials missing; startup blocker alert not sent');
+  });
+
+  test('converts go/no-go failures into startup blockers', () => {
+    const blockers = buildGoNoGoStartupBlockers({
+      riskStatus: 'OK',
+      reasons: [],
+      realizedPnlExRebatesUsd: 0,
+      worstTopInventoryExitPnlUsd: null,
+      testsPassing: true,
+      buildPassing: true,
+    });
+
+    expect(blockers).toEqual(['go_no_go:realized_pnl_ex_rebates_not_positive']);
+  });
+});
