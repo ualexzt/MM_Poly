@@ -98,6 +98,7 @@ export class StrategyRunner {
     wsStatus?: { connected: boolean; disconnectedAt: number | null }
   ): Promise<void> {
     const { config, scanner, bookClient, paperEngine, logger } = this.deps;
+    logger.info('CYCLE_START', { mode: config.mode, time: Date.now() });
 
     // §2 — disabled mode: no quoting
     if (config.mode === 'disabled') {
@@ -124,6 +125,7 @@ export class StrategyRunner {
 
     // §11.1 step 1 — Fetch markets
     const markets = await scanner.fetchMarkets();
+    logger.info('CYCLE_MARKETS_FETCHED', { count: markets.length });
     this.catalystGuard.syncFromMarkets(markets);
     
     // Phase 1: Basic filters (no book data needed)
