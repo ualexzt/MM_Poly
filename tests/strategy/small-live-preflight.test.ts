@@ -15,6 +15,7 @@ const baseEnv: EnvConfig = {
   minVolume24hUsd: 10000,
   maxSpreadCents: 8,
   minSpreadTicks: 3,
+  toxicityCancelIfSpreadTicksLte: 1,
   maxExposureUsd: 10,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,

@@ -47,6 +47,10 @@ export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
         defaultConfig.inventory.maxTotalStrategyExposureUsd
       ),
     },
+    toxicity: {
+      ...defaultConfig.toxicity,
+      cancelIfSpreadTicksLte: envConfig.toxicityCancelIfSpreadTicksLte,
+    },
     risk: {
       ...defaultConfig.risk,
       maxDailyDrawdownPct: envConfig.maxDrawdownPct * 100,
