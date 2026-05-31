@@ -15,6 +15,7 @@ export interface RouteResult {
   orderId?: string;
   reason: string;
   cancelledExistingOrderId?: string;
+  status?: string;
   filledSize?: number;
   filledPrice?: number;
 }
@@ -129,6 +130,7 @@ export class OrderRouter {
           orderId: result.orderID,
           reason: 'live_submitted',
           cancelledExistingOrderId,
+          status: result.status,
           filledSize: result.filledSize,
           filledPrice: result.filledPrice,
         };

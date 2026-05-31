@@ -383,7 +383,21 @@ export class StrategyRunner {
         continue;
       }
 
-      // §11.2 — Route through cancel-replace
+      // §11.2 — Route through cancel-replace. Keep unchanged live orders resting
+      // instead of cancel/replacing every cycle.
+      if (slot.orderId) {
+        const ageMs = Date.now() - slot.submittedAt;
+        const unchanged = slot.price === candidate.price && slot.size === candidate.size;
+        if (ageMs < config.minQuoteLifetimeMs) {
+          logger.info('ROUTE_SKIPPED_MIN_LIFETIME', { side, conditionId: market.conditionId, orderId: slot.orderId, ageMs });
+          continue;
+        }
+        if (unchanged && ageMs < config.maxQuoteLifetimeMs) {
+          logger.info('ROUTE_SKIPPED_UNCHANGED', { side, conditionId: market.conditionId, orderId: slot.orderId, ageMs });
+          continue;
+        }
+      }
+
       logger.info('ROUTING_ORDER', { side, price: candidate.price, tokenId: market.yesTokenId?.slice(0,20), orderId: slot.orderId });
       logger.info('ROUTE_CALL_START', { side, conditionId: market.conditionId });
       const routeResult = await this.orderRouter.route(
@@ -411,10 +425,13 @@ export class StrategyRunner {
       }
 
       if (routeResult.submitted && routeResult.orderId) {
-        if (side === 'BUY') {
-          slots.buy = { orderId: routeResult.orderId, price: candidate.price, size: candidate.size, submittedAt: Date.now() };
-        } else {
-          slots.sell = { orderId: routeResult.orderId, price: candidate.price, size: candidate.size, submittedAt: Date.now() };
+        const terminalFill = routeResult.filledSize && routeResult.filledSize > 0 && routeResult.status !== 'live';
+        if (!terminalFill) {
+          if (side === 'BUY') {
+            slots.buy = { orderId: routeResult.orderId, price: candidate.price, size: candidate.size, submittedAt: Date.now() };
+          } else {
+            slots.sell = { orderId: routeResult.orderId, price: candidate.price, size: candidate.size, submittedAt: Date.now() };
+          }
         }
 
         // §11.2 — Immediate live fill tracking (e.g. post-only crossed and matched)

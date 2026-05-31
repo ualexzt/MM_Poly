@@ -57,6 +57,56 @@ describe('strategy-runner', () => {
     );
   });
 
+  test('keeps unchanged live quotes resting instead of cancel-replacing every cycle', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-unchanged', yesTokenId: 'yes-unchanged', noTokenId: 'no-unchanged', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    const bookClient = {
+      async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
+        return {
+          tokenId, conditionId,
+          bids: [{ price: 0.24, size: 100, sizeUsd: 24 }],
+          asks: [{ price: 0.30, size: 100, sizeUsd: 30 }],
+          bestBid: 0.24, bestAsk: 0.30,
+          bestBidSizeUsd: 24, bestAskSizeUsd: 30,
+          midpoint: 0.27, spread: 0.06, spreadTicks: 6,
+          depth1Usd: 100, depth3Usd: 500,
+          tickSize: 0.01, minOrderSize: 5,
+          lastUpdateMs: Date.now(),
+        };
+      },
+    };
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'resting-buy', status: 'live' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: {
+        ...defaultConfig,
+        mode: 'small_live' as const,
+        liveTradingEnabled: true,
+        minQuoteLifetimeMs: 0,
+        maxQuoteLifetimeMs: 60_000,
+        size: { ...defaultConfig.size, baseOrderSizeUsd: 2, maxOrderSizeUsd: 3 },
+      },
+      scanner: { fetchMarkets: async () => [market] },
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle();
+    await runner.runCycle();
+
+    expect(mockClient.createAndPostOrder).toHaveBeenCalledTimes(1);
+    expect(mockClient.cancelOrder).not.toHaveBeenCalled();
+    expect(silentLogger.info).toHaveBeenCalledWith('ROUTE_SKIPPED_UNCHANGED', expect.objectContaining({ orderId: 'resting-buy' }));
+  });
+
   test('tracks immediate matched live buy so a later cycle can quote sell', async () => {
     const market: MarketState = {
       conditionId: 'cond-immediate-fill', yesTokenId: 'yes-immediate', noTokenId: 'no-immediate', active: true, closed: false,
@@ -106,10 +156,6 @@ describe('strategy-runner', () => {
     await runner.runCycle();
 
     expect(runner.getInventory().getTokenBalance(market.yesTokenId)).toBe(6);
-
-    mockClient.createAndPostOrder.mockClear();
-    await runner.runCycle();
-
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: market.yesTokenId, side: 'SELL' }),
       expect.anything(),
@@ -421,7 +467,7 @@ describe('strategy-runner', () => {
       getOpenOrders: jest.fn().mockResolvedValue([]),
     };
     const runner = new StrategyRunner({
-      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true, minQuoteLifetimeMs: 0, maxQuoteLifetimeMs: 0 },
       scanner: { fetchMarkets: async () => [market] },
       bookClient,
       paperEngine: new PaperExecutionEngine(),
@@ -496,13 +542,15 @@ describe('strategy-runner', () => {
         .mockResolvedValueOnce({ orderID: 'buy-1' })
         .mockResolvedValueOnce({ orderID: 'buy-2' })
         .mockResolvedValueOnce({ orderID: 'sell-1' }),
-      cancelOrder: jest.fn((orderId: string) => orderId === 'buy-2' ? Promise.reject(new Error('cancel failed')) : Promise.resolve({})),
+      cancelOrder: jest.fn((payload: { orderID: string }) => payload.orderID === 'buy-2' ? Promise.reject(new Error('cancel failed')) : Promise.resolve({})),
       getOpenOrders: jest.fn().mockResolvedValue([]),
     };
     const config = {
       ...defaultConfig,
       mode: 'small_live' as const,
       liveTradingEnabled: true,
+      minQuoteLifetimeMs: 0,
+      maxQuoteLifetimeMs: 0,
       inventory: {
         ...defaultConfig.inventory,
         maxMarketExposureUsd: 100,

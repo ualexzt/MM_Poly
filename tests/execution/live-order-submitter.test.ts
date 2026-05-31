@@ -35,7 +35,7 @@ describe('live-order-submitter', () => {
 
     const result = await submitter.submit(quote, { tickSize: 0.01, negRisk: false });
 
-    expect(result).toEqual({ orderID: 'live-abc-123' });
+    expect(result).toEqual({ orderID: 'live-abc-123', status: undefined, filledSize: undefined, filledPrice: undefined });
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         tokenID: 'token-yes',
