@@ -89,4 +89,13 @@ describe('live-order-submitter', () => {
 
     await expect(submitter.getOpenOrders()).rejects.toThrow('network down');
   });
+
+  test('rejects malformed open order payloads', async () => {
+    const mockClient = makeMockClient();
+    mockClient.getOpenOrders.mockResolvedValue({ unexpected: [] });
+
+    const submitter = new LiveOrderSubmitter(mockClient as any);
+
+    await expect(submitter.getOpenOrders()).rejects.toThrow('Unexpected open orders response payload');
+  });
 });

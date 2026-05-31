@@ -69,6 +69,6 @@ export class LiveOrderSubmitter {
     if (Array.isArray(result)) return result;
     if (result && Array.isArray(result.orders)) return result.orders;
     if (result && Array.isArray(result.data)) return result.data;
-    return [];
+    throw new Error('Unexpected open orders response payload');
   }
 }
