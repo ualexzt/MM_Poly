@@ -12,6 +12,10 @@ import type { MarketState } from '../types/market';
 import { defaultConfig } from './config';
 import { StrategyRunner } from './strategy-runner';
 
+export function shouldSendSmallLiveReport(lastReportAtMs: number, nowMs: number, intervalHours: number): boolean {
+  return nowMs - lastReportAtMs >= intervalHours * 60 * 60 * 1000;
+}
+
 export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
   return {
     ...defaultConfig,

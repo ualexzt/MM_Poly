@@ -10,6 +10,7 @@ import {
   cancelAllLiveOrders,
   ensureNoOpenLiveOrders,
   handleLiveUserEvent,
+  shouldSendSmallLiveReport,
 } from '../../src/strategy/small-live-runner';
 import type { EnvConfig } from '../../src/config/env';
 import type { Logger } from '../../src/utils/logger';
@@ -48,6 +49,16 @@ const silentLogger: Logger = {
 };
 
 describe('small-live runner wiring', () => {
+  test('sends 3h report when interval elapsed', () => {
+    const last = new Date('2026-05-31T00:00:00Z').getTime();
+    const exactInterval = new Date('2026-05-31T03:00:00Z').getTime();
+    const afterInterval = new Date('2026-05-31T03:00:01Z').getTime();
+
+    expect(shouldSendSmallLiveReport(last, exactInterval, 3)).toBe(true);
+    expect(shouldSendSmallLiveReport(last, afterInterval, 3)).toBe(true);
+    expect(shouldSendSmallLiveReport(last, afterInterval, 4)).toBe(false);
+  });
+
   test('builds a guarded small_live config from env overrides', () => {
     const config = buildSmallLiveConfig(envConfig);
 

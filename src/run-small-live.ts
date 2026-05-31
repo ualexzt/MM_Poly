@@ -12,6 +12,9 @@ import { PaperPnlTracker } from './accounting/paper-pnl-tracker';
 import { ConsoleLogger } from './utils/logger';
 import { LiveOrderSubmitter } from './execution/live-order-submitter';
 import { DataApiClient } from './data/data-api-client';
+import { TelegramNotifier } from './notifier/telegram';
+import { SmallLiveMetrics } from './monitoring/small-live-metrics';
+import { formatSmallLiveAlert, formatSmallLiveTelegramReport } from './reporting/small-live-telegram-report';
 import {
   buildSmallLiveConfig,
   cancelAllLiveOrders,
@@ -19,6 +22,7 @@ import {
   createSmallLiveStrategyRunner,
   createTrackingMarketScanner,
   handleLiveUserEvent,
+  shouldSendSmallLiveReport,
 } from './strategy/small-live-runner';
 import { buildGoNoGoStartupBlockersFromEnv, notifyStartupBlockers, validateSmallLiveStartupEnv } from './strategy/small-live-preflight';
 
@@ -90,6 +94,11 @@ async function main() {
   }
 
   const config = buildSmallLiveConfig(env);
+  const telegram = env.telegramBotToken && env.telegramChatId
+    ? new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId })
+    : null;
+  const metrics = new SmallLiveMetrics();
+  let lastReportAtMs = Date.now();
   const tokenConditionIds = new Map<string, string>();
   const scanner = createTrackingMarketScanner(new GammaApiScanner(), tokenConditionIds);
   const initialMarkets = await scanner.fetchMarkets();
@@ -135,6 +144,14 @@ async function main() {
   logger.info('Drawdown kill switch', { usd: config.risk.maxDailyDrawdownUsd });
   logger.info('Initial live market universe', { markets: initialMarkets.length, trackedTokens: tokenConditionIds.size, maxMarkets: env.maxMarkets });
 
+  if (telegram) {
+    await telegram.sendMessage(formatSmallLiveAlert({
+      severity: config.mode === 'small_live' && config.liveTradingEnabled ? 'CRITICAL' : 'INFO',
+      title: 'Bot started',
+      detail: `Mode=${config.mode}, liveTradingEnabled=${config.liveTradingEnabled}, maxMarkets=${env.maxMarkets}`,
+    }));
+  }
+
   userStream.connect();
   logger.info('=== Starting small_live strategy loop ===');
 
@@ -147,7 +164,31 @@ async function main() {
 
     cycleInFlight = true;
     try {
+      const cycleStartedAtMs = Date.now();
       await runner.runCycle(userStream.getConnectionStatus());
+      metrics.recordCycleLag(Date.now() - cycleStartedAtMs);
+
+      const now = Date.now();
+      if (telegram && shouldSendSmallLiveReport(lastReportAtMs, now, env.telegramReportIntervalHours)) {
+        const snap = metrics.reset();
+        const inventory = runner.getInventory();
+        await telegram.sendMessage(formatSmallLiveTelegramReport({
+          mode: config.mode,
+          reportAt: new Date(now),
+          balanceUsd: inventory.getPusdAvailable(),
+          openOrdersCount: 0,
+          openOrdersNotionalUsd: 0,
+          positionsCount: 0,
+          positionsValueUsd: inventory.getTotalExposureUsd(),
+          realizedPnlUsd: 0,
+          unrealizedPnlUsd: 0,
+          fillsCount: snap.matchedSubmits,
+          rejectsCount: Object.values(snap.rejects).reduce((sum, value) => sum + value, 0),
+          activeMarkets: env.maxMarkets,
+          riskState: 'OK',
+        }));
+        lastReportAtMs = now;
+      }
     } catch (err) {
       logger.error('small_live cycle failed', { error: String(err) });
     } finally {
