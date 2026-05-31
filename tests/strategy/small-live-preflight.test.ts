@@ -18,6 +18,7 @@ const baseEnv: EnvConfig = {
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,
   dailyReportMinute: 0,
+  telegramReportIntervalHours: 3,
   maxMarkets: 20,
   liveTradingEnabled: true,
   privateKey: `0x${'a'.repeat(64)}`,

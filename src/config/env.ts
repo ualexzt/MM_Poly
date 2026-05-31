@@ -12,7 +12,7 @@ export interface EnvConfig {
   maxDrawdownPct: number;
   dailyReportHour: number;
   dailyReportMinute: number;
-  telegramReportIntervalHours?: number;
+  telegramReportIntervalHours: number;
   maxMarkets: number;
   liveTradingEnabled: boolean;
   privateKey?: string;
