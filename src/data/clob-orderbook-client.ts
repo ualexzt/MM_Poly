@@ -21,12 +21,12 @@ function mapClobBook(data: any, tokenId: string, conditionId: string): BookState
     price: parseFloat(b.price),
     size: parseFloat(b.size),
     sizeUsd: parseFloat(b.price) * parseFloat(b.size)
-  }));
+  })).sort((a: BookLevel, b: BookLevel) => b.price - a.price);
   const asks: BookLevel[] = (data.asks || []).map((a: any) => ({
     price: parseFloat(a.price),
     size: parseFloat(a.size),
     sizeUsd: parseFloat(a.price) * parseFloat(a.size)
-  }));
+  })).sort((a: BookLevel, b: BookLevel) => a.price - b.price);
 
   const bestBid = bids.length > 0 ? bids[0].price : null;
   const bestAsk = asks.length > 0 ? asks[0].price : null;
