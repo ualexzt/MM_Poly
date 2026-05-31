@@ -48,8 +48,12 @@ export class LiveOrderSubmitter {
 
     const takingAmount = parseFloat(resp.takingAmount || '0');
     const makingAmount = parseFloat(resp.makingAmount || '0');
-    const filledSize = takingAmount > 0 ? takingAmount : undefined;
-    const filledPrice = (filledSize && filledSize > 0) ? (makingAmount / filledSize) : undefined;
+    const sizeAmount = quote.side === 'BUY' ? takingAmount : makingAmount;
+    const priceAmount = quote.side === 'BUY' ? makingAmount : takingAmount;
+    const filledSize = Number.isFinite(sizeAmount) && sizeAmount > 0 ? sizeAmount : undefined;
+    const filledPrice = filledSize !== undefined && Number.isFinite(priceAmount) && priceAmount > 0
+      ? priceAmount / filledSize
+      : undefined;
 
     return { orderID: resp.orderID, filledSize, filledPrice };
   }
