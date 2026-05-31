@@ -52,7 +52,8 @@ describe('strategy-runner', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes1', side: 'BUY' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 
@@ -112,7 +113,8 @@ describe('strategy-runner', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: market.yesTokenId, side: 'SELL' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 
@@ -154,7 +156,8 @@ describe('strategy-runner', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes-refresh', side: 'BUY' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 
@@ -288,7 +291,8 @@ describe('strategy-runner', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes-slot', side: 'BUY' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 
@@ -380,7 +384,8 @@ describe('strategy-runner', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes-submit-fail', side: 'BUY' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 

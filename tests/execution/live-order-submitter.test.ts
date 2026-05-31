@@ -44,7 +44,8 @@ describe('live-order-submitter', () => {
         size: '10',
       }),
       expect.objectContaining({ tickSize: '0.01', negRisk: false }),
-      'GTC'
+      'GTC',
+      true
     );
   });
 

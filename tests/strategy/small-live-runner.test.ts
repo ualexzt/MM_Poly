@@ -214,7 +214,8 @@ describe('small-live runner wiring', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes1', side: 'BUY' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 
@@ -267,7 +268,8 @@ describe('small-live runner wiring', () => {
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes1' }),
       expect.anything(),
-      'GTC'
+      'GTC',
+      true
     );
   });
 });

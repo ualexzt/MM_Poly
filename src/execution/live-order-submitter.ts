@@ -15,7 +15,8 @@ export interface LiveOrderSubmitterClient {
       size: string | number;
     },
     options: { tickSize: string; negRisk?: boolean },
-    orderType: 'GTC' | 'FOK' | 'FAK'
+    orderType: 'GTC' | 'FOK' | 'FAK',
+    postOnly?: boolean
   ): Promise<{ orderID: string; takingAmount?: string; makingAmount?: string }>;
   cancelOrder(orderId: string): Promise<any>;
   getOpenOrders(): Promise<any[]>;
@@ -42,7 +43,8 @@ export class LiveOrderSubmitter {
         tickSize: String(meta.tickSize),
         ...(meta.negRisk !== undefined ? { negRisk: meta.negRisk } : {}),
       },
-      'GTC'
+      'GTC',
+      true
     );
     console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', resp: JSON.stringify(resp).slice(0, 200) }));
 

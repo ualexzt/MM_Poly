@@ -222,7 +222,8 @@ describe('execution tests', () => {
       expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
         expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: '0.45', size: '10' }),
         expect.anything(),
-        'GTC'
+        'GTC',
+        true
       );
     });
 
