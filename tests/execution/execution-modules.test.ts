@@ -220,7 +220,7 @@ describe('execution tests', () => {
       expect(result.orderId).toBe('live-123');
       expect(result.reason).toBe('live_submitted');
       expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: '0.45', size: '10' }),
+        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: 0.45, size: 10 }),
         expect.anything(),
         'GTC',
         true
@@ -262,7 +262,7 @@ describe('execution tests', () => {
 
       expect(result.submitted).toBe(true);
       expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: '0.54', size: '10' }),
+        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: 0.54, size: 10 }),
         expect.anything(),
         'GTC',
         true

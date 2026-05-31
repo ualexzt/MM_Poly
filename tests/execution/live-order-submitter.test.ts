@@ -40,8 +40,8 @@ describe('live-order-submitter', () => {
       expect.objectContaining({
         tokenID: 'token-yes',
         side: 'BUY',
-        price: '0.48',
-        size: '10',
+        price: 0.48,
+        size: 10,
       }),
       expect.objectContaining({ tickSize: '0.01', negRisk: false }),
       'GTC',
