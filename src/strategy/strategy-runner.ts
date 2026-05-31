@@ -397,6 +397,15 @@ export class StrategyRunner {
         }
       );
 
+      logger.info('ROUTE_RESULT', {
+        side,
+        conditionId: market.conditionId,
+        submitted: routeResult.submitted,
+        orderId: routeResult.orderId,
+        reason: routeResult.reason,
+        cancelledExistingOrderId: routeResult.cancelledExistingOrderId,
+      });
+
       if (routeResult.cancelledExistingOrderId && slot.orderId === routeResult.cancelledExistingOrderId) {
         slot.orderId = null;
       }

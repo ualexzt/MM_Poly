@@ -32,20 +32,26 @@ export class LiveOrderSubmitter {
 
   async submit(quote: QuoteCandidate, meta: LiveMarketMeta): Promise<LiveOrderResult> {
     console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_START', tokenId: quote.tokenId?.slice(0,20), side: quote.side, price: quote.price, size: quote.size, tickSize: meta.tickSize, negRisk: meta.negRisk }));
-    const resp = await this.client.createAndPostOrder(
-      {
-        tokenID: quote.tokenId,
-        side: quote.side,
-        price: String(quote.price),
-        size: String(quote.size),
-      },
-      {
-        tickSize: String(meta.tickSize),
-        ...(meta.negRisk !== undefined ? { negRisk: meta.negRisk } : {}),
-      },
-      'GTC',
-      true
-    );
+    let resp: { orderID: string; takingAmount?: string; makingAmount?: string };
+    try {
+      resp = await this.client.createAndPostOrder(
+        {
+          tokenID: quote.tokenId,
+          side: quote.side,
+          price: String(quote.price),
+          size: String(quote.size),
+        },
+        {
+          tickSize: String(meta.tickSize),
+          ...(meta.negRisk !== undefined ? { negRisk: meta.negRisk } : {}),
+        },
+        'GTC',
+        true
+      );
+    } catch (err) {
+      console.log(JSON.stringify({ level: 'error', time: Date.now(), message: 'SUBMIT_ERROR', error: err instanceof Error ? err.message : String(err) }));
+      throw err;
+    }
     console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', resp: JSON.stringify(resp).slice(0, 200) }));
 
     const takingAmount = parseFloat(resp.takingAmount || '0');
