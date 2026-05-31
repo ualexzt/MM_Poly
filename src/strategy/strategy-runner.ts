@@ -6,7 +6,7 @@ import { MarketScanner } from '../data/gamma-market-scanner';
 import { OrderbookClient } from '../data/clob-orderbook-client';
 import { PaperExecutionEngine } from '../simulation/paper-execution-engine';
 import { Logger } from '../utils/logger';
-import { filterEligibleMarkets } from './market-selector';
+import { filterEligibleMarkets, isMarketEligible } from './market-selector';
 import { computeFairPrice, checkComplementConsistency } from '../engines/fair-price-engine';
 import { computeToxicityScore, getToxicityAction, checkHardToxicityCancel } from '../engines/toxicity-engine';
 import { computeInventorySkew, checkSellInventoryAvailable } from '../engines/inventory-engine';
@@ -130,30 +130,26 @@ export class StrategyRunner {
     
     // Phase 1: Basic filters (no book data needed)
     const basicEligible = filterEligibleMarkets(markets, config.marketFilter);
-    const prefetchLimit = this.deps.maxMarkets != null
-      ? Math.min(basicEligible.length, Math.max(this.deps.maxMarkets * 10, this.deps.maxMarkets))
-      : basicEligible.length;
-    const prefetchCandidates = basicEligible.slice(0, prefetchLimit);
-    logger.info('CYCLE_BASIC_FILTER', { eligible: basicEligible.length, active: prefetchCandidates.length });
+    const maxActiveMarkets = this.deps.maxMarkets ?? basicEligible.length;
+    logger.info('CYCLE_BASIC_FILTER', { eligible: basicEligible.length, active: maxActiveMarkets });
     
-    // Phase 2: Pre-fetch books for enough basic-eligible markets to survive book-level filters.
-    for (const market of prefetchCandidates) {
+    // Phase 2/3: Fetch books sequentially until enough markets survive book-level filters.
+    const activeMarkets: MarketState[] = [];
+    for (const market of basicEligible) {
+      if (activeMarkets.length >= maxActiveMarkets) break;
       try {
         logger.info('CYCLE_PREFETCH_BOOK', { conditionId: market.conditionId?.slice(0, 20) });
         const yesBook = await bookClient.fetchBook(market.conditionId, market.yesTokenId);
         const noBook = await bookClient.fetchBook(market.conditionId, market.noTokenId);
         this.books.set(market.yesTokenId, yesBook);
         this.books.set(market.noTokenId, noBook);
+        if (isMarketEligible(market, config.marketFilter, this.books)) activeMarkets.push(market);
       } catch (err) {
         logger.warn('Failed to pre-fetch book', { conditionId: market.conditionId, error: String(err) });
       }
     }
     logger.info('CYCLE_PREFETCH_DONE', { booksSize: this.books.size });
-    
-    // Phase 3: Re-filter with book data (spread, depth, midpoint filters)
-    const eligible = filterEligibleMarkets(markets, config.marketFilter, this.books);
-    const activeMarkets = this.deps.maxMarkets != null ? eligible.slice(0, this.deps.maxMarkets) : eligible;
-    logger.info('CYCLE_REFILTER', { eligible: eligible.length, active: activeMarkets.length });
+    logger.info('CYCLE_REFILTER', { eligible: activeMarkets.length, active: activeMarkets.length });
     await this._cancelOrdersOutsideActiveUniverse(new Set(activeMarkets.map((market) => market.conditionId)));
 
     for (const market of activeMarkets) {
