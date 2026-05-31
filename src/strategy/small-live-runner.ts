@@ -38,6 +38,7 @@ export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
       minLiquidityUsd: envConfig.minLiquidityUsd,
       minVolume24hUsd: envConfig.minVolume24hUsd,
       maxSpreadCents: envConfig.maxSpreadCents,
+      minSpreadTicks: envConfig.minSpreadTicks,
     },
     inventory: {
       ...defaultConfig.inventory,

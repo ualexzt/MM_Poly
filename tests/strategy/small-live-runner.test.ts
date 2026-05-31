@@ -28,6 +28,7 @@ const envConfig: EnvConfig = {
   minLiquidityUsd: 7000,
   minVolume24hUsd: 12000,
   maxSpreadCents: 7,
+  minSpreadTicks: 1,
   maxExposureUsd: 100,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,
@@ -81,6 +82,7 @@ describe('small-live runner wiring', () => {
     expect(config.marketFilter.minLiquidityUsd).toBe(7000);
     expect(config.marketFilter.minVolume24hUsd).toBe(12000);
     expect(config.marketFilter.maxSpreadCents).toBe(7);
+    expect(config.marketFilter.minSpreadTicks).toBe(1);
     expect(config.inventory.maxTotalStrategyExposureUsd).toBe(25);
     expect(config.risk.maxDailyDrawdownPct).toBe(2);
     expect(config.risk.maxDailyDrawdownUsd).toBe(5);

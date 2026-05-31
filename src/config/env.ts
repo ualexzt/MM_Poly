@@ -8,6 +8,7 @@ export interface EnvConfig {
   minLiquidityUsd: number;
   minVolume24hUsd: number;
   maxSpreadCents: number;
+  minSpreadTicks: number;
   maxExposureUsd: number;
   maxDrawdownPct: number;
   dailyReportHour: number;
@@ -97,6 +98,7 @@ export const env: EnvConfig = {
   minLiquidityUsd: getEnvFloat('MIN_LIQUIDITY_USD', 5000),
   minVolume24hUsd: getEnvFloat('MIN_VOLUME_24H_USD', 10000),
   maxSpreadCents: getEnvFloat('MAX_SPREAD_CENTS', 8),
+  minSpreadTicks: getEnvInt('MIN_SPREAD_TICKS', 3),
   maxExposureUsd: getEnvFloat('MAX_EXPOSURE_USD', 10),
   maxDrawdownPct: getEnvFloat('MAX_DRAWDOWN_PCT', 0.02),
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
