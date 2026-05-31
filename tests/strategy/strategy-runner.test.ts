@@ -56,6 +56,66 @@ describe('strategy-runner', () => {
     );
   });
 
+  test('tracks immediate matched live buy so a later cycle can quote sell', async () => {
+    const market: MarketState = {
+      conditionId: 'cond-immediate-fill', yesTokenId: 'yes-immediate', noTokenId: 'no-immediate', active: true, closed: false,
+      enableOrderBook: true, feesEnabled: true, volume24hUsd: 25000, liquidityUsd: 15000,
+      oracleAmbiguityScore: 0.05, resolutionSource: 'https://example.com',
+    };
+    const bookClient = {
+      async fetchBook(conditionId: string, tokenId: string): Promise<BookState> {
+        return {
+          tokenId, conditionId,
+          bids: [{ price: 0.24, size: 100, sizeUsd: 24 }],
+          asks: [{ price: 0.30, size: 100, sizeUsd: 30 }],
+          bestBid: 0.24, bestAsk: 0.30,
+          bestBidSizeUsd: 24, bestAskSizeUsd: 30,
+          midpoint: 0.27, spread: 0.06, spreadTicks: 6,
+          depth1Usd: 100, depth3Usd: 500,
+          tickSize: 0.01, minOrderSize: 5,
+          lastUpdateMs: Date.now(),
+        };
+      },
+    };
+    const mockClient = {
+      createAndPostOrder: jest.fn()
+        .mockResolvedValueOnce({ orderID: 'buy-filled', status: 'matched', takingAmount: '6', makingAmount: '1.5' })
+        .mockResolvedValue({ orderID: 'sell-live', status: 'live' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const runner = new StrategyRunner({
+      config: {
+        ...defaultConfig,
+        mode: 'small_live' as const,
+        liveTradingEnabled: true,
+        size: {
+          ...defaultConfig.size,
+          baseOrderSizeUsd: 2,
+          maxOrderSizeUsd: 3,
+        },
+      },
+      scanner: { fetchMarkets: async () => [market] },
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle();
+
+    expect(runner.getInventory().getTokenBalance(market.yesTokenId)).toBe(6);
+
+    mockClient.createAndPostOrder.mockClear();
+    await runner.runCycle();
+
+    expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ tokenID: market.yesTokenId, side: 'SELL' }),
+      expect.anything(),
+      'GTC'
+    );
+  });
+
   test('fetches fresh books even when a stale cached book exists', async () => {
     const market: MarketState = {
       conditionId: 'cond-refresh', yesTokenId: 'yes-refresh', noTokenId: 'no-refresh', active: true, closed: false,

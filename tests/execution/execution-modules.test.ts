@@ -220,10 +220,56 @@ describe('execution tests', () => {
       expect(result.orderId).toBe('live-123');
       expect(result.reason).toBe('live_submitted');
       expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: 0.45, size: 10 }),
+        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: '0.45', size: '10' }),
         expect.anything(),
         'GTC'
       );
+    });
+
+    test('returns immediate fill details for matched live orders', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const mockClient = {
+        createAndPostOrder: jest.fn().mockResolvedValue({
+          orderID: 'live-filled-1',
+          status: 'matched',
+          takingAmount: '6',
+          makingAmount: '1.5',
+        }),
+        cancelOrder: jest.fn().mockResolvedValue({}),
+        getOpenOrders: jest.fn().mockResolvedValue([]),
+      };
+      const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: true }, liveSubmitter);
+
+      const quote: QuoteCandidate = {
+        conditionId: 'c1', tokenId: 'yes1', side: 'BUY', price: 0.25, size: 6, sizeUsd: 1.5,
+        postOnly: true, orderType: 'GTC', fairPrice: 0.50, targetHalfSpreadCents: 5,
+        inventorySkewCents: 0, toxicityScore: 0, reason: 'test', riskFlags: []
+      };
+
+      const book: BookState = {
+        tokenId: 'yes1', conditionId: 'c1',
+        bids: [], asks: [],
+        bestBid: 0.24, bestAsk: 0.30,
+        bestBidSizeUsd: 100, bestAskSizeUsd: 100,
+        midpoint: 0.27, spread: 0.06, spreadTicks: 6,
+        depth1Usd: 100, depth3Usd: 500,
+        tickSize: 0.01, minOrderSize: 5,
+        lastUpdateMs: Date.now()
+      };
+
+      const result = await router.route(quote, book, null, {
+        exposureAllowed: true,
+        sellInventoryAvailable: true,
+        killSwitchActive: false,
+      });
+
+      expect(result).toMatchObject({
+        submitted: true,
+        orderId: 'live-filled-1',
+        filledSize: 6,
+        filledPrice: 0.25,
+      });
     });
   });
 });
