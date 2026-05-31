@@ -14,6 +14,7 @@ export type SmallLiveStartupBlocker =
   | 'missing_wallet_address'
   | 'mode_not_small_live'
   | 'live_trading_disabled'
+  | 'invalid_max_markets'
   | 'max_markets_above_approved_limit'
   | 'max_exposure_above_approved_limit'
   | 'telegram_missing'
@@ -39,6 +40,7 @@ export function validateSmallLiveStartupEnv(envConfig: EnvConfig): SmallLiveStar
 
   if (envConfig.mode !== 'small_live') blockers.push('mode_not_small_live');
   if (!envConfig.liveTradingEnabled) blockers.push('live_trading_disabled');
+  if (!Number.isFinite(envConfig.maxMarkets) || envConfig.maxMarkets < 1) blockers.push('invalid_max_markets');
   if (envConfig.maxMarkets > APPROVED_SMALL_LIVE_MAX_MARKETS) blockers.push('max_markets_above_approved_limit');
   if (envConfig.maxExposureUsd > APPROVED_SMALL_LIVE_MAX_EXPOSURE_USD) blockers.push('max_exposure_above_approved_limit');
   if (!hasText(envConfig.telegramBotToken) || !hasText(envConfig.telegramChatId)) blockers.push('telegram_missing');

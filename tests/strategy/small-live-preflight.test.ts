@@ -61,6 +61,13 @@ describe('small-live startup preflight', () => {
     expect(result.blockers).toContain('invalid_private_key');
   });
 
+  test('blocks small_live when maxMarkets is below one', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, maxMarkets: -1 });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('invalid_max_markets');
+  });
+
   test('blocks small_live when maxMarkets exceeds approved envelope', () => {
     const result = validateSmallLiveStartupEnv({ ...baseEnv, maxMarkets: 3 });
 
