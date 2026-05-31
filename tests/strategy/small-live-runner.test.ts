@@ -108,14 +108,14 @@ describe('small-live runner wiring', () => {
     const result = await cancelAllLiveOrders(liveSubmitter, silentLogger);
 
     expect(result).toEqual({ total: 2, failed: 0, failedOrderIds: [] });
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-1');
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-2');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-1' });
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-2' });
   });
 
   test('returns failed live order cancellations to the caller', async () => {
     const mockClient = {
       createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'unused' }),
-      cancelOrder: jest.fn((orderId: string) => orderId === 'live-2' ? Promise.reject(new Error('cancel failed')) : Promise.resolve({})),
+      cancelOrder: jest.fn((payload: { orderID: string }) => payload.orderID === 'live-2' ? Promise.reject(new Error('cancel failed')) : Promise.resolve({})),
       getOpenOrders: jest.fn().mockResolvedValue([{ id: 'live-1' }, { orderID: 'live-2' }]),
     };
     const liveSubmitter = new LiveOrderSubmitter(mockClient as any);

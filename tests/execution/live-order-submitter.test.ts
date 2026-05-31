@@ -62,12 +62,21 @@ describe('live-order-submitter', () => {
 
   test('cancels order by id', async () => {
     const mockClient = makeMockClient();
-    mockClient.cancelOrder.mockResolvedValue({ success: true });
+    mockClient.cancelOrder.mockResolvedValue({ canceled: ['live-abc-123'], not_canceled: {} });
 
     const submitter = new LiveOrderSubmitter(mockClient as any);
     await submitter.cancel('live-abc-123');
 
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-abc-123');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-abc-123' });
+  });
+
+  test('throws when exchange reports order was not canceled', async () => {
+    const mockClient = makeMockClient();
+    mockClient.cancelOrder.mockResolvedValue({ canceled: [], not_canceled: { 'live-abc-123': 'not found' } });
+
+    const submitter = new LiveOrderSubmitter(mockClient as any);
+
+    await expect(submitter.cancel('live-abc-123')).rejects.toThrow('Order not canceled: live-abc-123 not found');
   });
 
   test('returns open orders', async () => {

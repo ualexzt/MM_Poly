@@ -18,7 +18,7 @@ export interface LiveOrderSubmitterClient {
     orderType: 'GTC' | 'FOK' | 'FAK',
     postOnly?: boolean
   ): Promise<{ orderID: string; takingAmount?: string; makingAmount?: string }>;
-  cancelOrder(orderId: string): Promise<any>;
+  cancelOrder(payload: { orderID: string }): Promise<any>;
   getOpenOrders(): Promise<any[]>;
 }
 
@@ -67,7 +67,13 @@ export class LiveOrderSubmitter {
   }
 
   async cancel(orderId: string): Promise<void> {
-    await this.client.cancelOrder(orderId);
+    const result = await this.client.cancelOrder({ orderID: orderId });
+    if (result?.not_canceled && Object.prototype.hasOwnProperty.call(result.not_canceled, orderId)) {
+      throw new Error(`Order not canceled: ${orderId} ${result.not_canceled[orderId] ?? ''}`.trim());
+    }
+    if (Array.isArray(result?.canceled) && !result.canceled.includes(orderId)) {
+      throw new Error(`Cancel response missing order id: ${orderId}`);
+    }
   }
 
   async getOpenOrders(): Promise<any[]> {

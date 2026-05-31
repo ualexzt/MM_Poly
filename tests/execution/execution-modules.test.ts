@@ -178,9 +178,9 @@ describe('execution tests', () => {
       await router.cancelOrder('live-direct');
       await router.cancelAll();
 
-      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-direct');
-      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-1');
-      expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-2');
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-direct' });
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-1' });
+      expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-2' });
     });
 
     test('submits live order when configured', async () => {

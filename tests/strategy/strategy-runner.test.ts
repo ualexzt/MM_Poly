@@ -255,7 +255,7 @@ describe('strategy-runner', () => {
     markets = [];
     await runner.runCycle();
 
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('dropped-live-order');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'dropped-live-order' });
   });
 
   test('cancels existing inventory-increasing live order when hard inventory limit is reached', async () => {
@@ -297,7 +297,7 @@ describe('strategy-runner', () => {
     runner.onFill(market.conditionId, market.yesTokenId, 'BUY', 0.49, 10);
     await runner.runCycle();
 
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('buy-increasing');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'buy-increasing' });
   });
 
   test('clears filled live order slots before the next quote cycle', async () => {
@@ -434,7 +434,7 @@ describe('strategy-runner', () => {
     await runner.runCycle();
 
     expect(mockClient.cancelOrder).toHaveBeenCalledTimes(1);
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('old-live-order');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'old-live-order' });
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({ tokenID: 'yes-submit-fail', side: 'BUY' }),
       expect.anything(),
@@ -463,7 +463,7 @@ describe('strategy-runner', () => {
     await runner.runCycle({ connected: false, disconnectedAt: null });
 
     expect(mockClient.getOpenOrders).toHaveBeenCalledTimes(1);
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-to-cancel');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'live-to-cancel' });
     expect(scanner.fetchMarkets).not.toHaveBeenCalled();
     expect(bookClient.fetchBook).not.toHaveBeenCalled();
     expect(mockClient.createAndPostOrder).not.toHaveBeenCalled();
@@ -528,7 +528,7 @@ describe('strategy-runner', () => {
     stale = true;
     await runner.runCycle();
 
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('buy-2');
-    expect(mockClient.cancelOrder).toHaveBeenCalledWith('sell-1');
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'buy-2' });
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith({ orderID: 'sell-1' });
   });
 });
