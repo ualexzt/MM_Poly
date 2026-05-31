@@ -67,6 +67,12 @@ describe('small-live runner wiring', () => {
     ])).toBeCloseTo(4.0);
   });
 
+  test('rejects malformed open order notional fields', () => {
+    expect(() => calculateOpenOrderNotionalUsd([
+      { price: 'bad-price', original_size: '10', size_matched: '0' },
+    ])).toThrow('Malformed open order notional');
+  });
+
   test('builds a guarded small_live config from env overrides', () => {
     const config = buildSmallLiveConfig(envConfig);
 

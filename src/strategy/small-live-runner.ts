@@ -21,6 +21,9 @@ export function calculateOpenOrderNotionalUsd(openOrders: any[]): number {
     const price = Number(order.price ?? 0);
     const original = Number(order.original_size ?? order.size ?? 0);
     const matched = Number(order.size_matched ?? 0);
+    if (![price, original, matched].every(Number.isFinite) || price < 0 || original < 0 || matched < 0) {
+      throw new Error('Malformed open order notional fields');
+    }
     return sum + price * Math.max(0, original - matched);
   }, 0);
 }
