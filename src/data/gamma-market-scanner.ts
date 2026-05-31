@@ -57,7 +57,7 @@ export class GammaApiScanner implements MarketScanner {
 
   async fetchMarkets(): Promise<MarketState[]> {
     const res = await fetchWithTimeout(
-      `${this.baseUrl}/markets?active=true&closed=false&limit=50`
+      `${this.baseUrl}/markets?active=true&closed=false&limit=500`
     );
     if (!res.ok) throw new Error(`Gamma API error: ${res.status}`);
     const data = await res.json();
