@@ -83,6 +83,7 @@ describe('market-selector', () => {
         depth1Usd: 0.2,
         depth3Usd: 0.5,
         tickSize: 0.001,
+        minOrderSize: 1,
       })],
     ]);
 
