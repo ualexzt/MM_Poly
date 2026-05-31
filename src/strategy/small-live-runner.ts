@@ -40,6 +40,14 @@ export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
       maxSpreadCents: envConfig.maxSpreadCents,
       minSpreadTicks: envConfig.minSpreadTicks,
     },
+    size: {
+      ...defaultConfig.size,
+      maxOrderSizeUsd: Math.min(
+        envConfig.maxOrderSizeUsd,
+        envConfig.maxExposureUsd,
+        defaultConfig.inventory.maxMarketExposureUsd
+      ),
+    },
     inventory: {
       ...defaultConfig.inventory,
       maxTotalStrategyExposureUsd: Math.min(

@@ -30,6 +30,7 @@ const envConfig: EnvConfig = {
   maxSpreadCents: 7,
   minSpreadTicks: 1,
   toxicityCancelIfSpreadTicksLte: 0,
+  maxOrderSizeUsd: 2,
   maxExposureUsd: 100,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,
@@ -85,9 +86,15 @@ describe('small-live runner wiring', () => {
     expect(config.marketFilter.maxSpreadCents).toBe(7);
     expect(config.marketFilter.minSpreadTicks).toBe(1);
     expect(config.toxicity.cancelIfSpreadTicksLte).toBe(0);
+    expect(config.size.maxOrderSizeUsd).toBe(2);
     expect(config.inventory.maxTotalStrategyExposureUsd).toBe(25);
     expect(config.risk.maxDailyDrawdownPct).toBe(2);
     expect(config.risk.maxDailyDrawdownUsd).toBe(5);
+  });
+
+  test('caps order size by order, exposure, and market limits', () => {
+    expect(buildSmallLiveConfig({ ...envConfig, maxOrderSizeUsd: 4 }).size.maxOrderSizeUsd).toBe(3);
+    expect(buildSmallLiveConfig({ ...envConfig, maxOrderSizeUsd: 4, maxExposureUsd: 2.5 }).size.maxOrderSizeUsd).toBe(2.5);
   });
 
   test('cancels all live orders through the submitter during shutdown', async () => {
