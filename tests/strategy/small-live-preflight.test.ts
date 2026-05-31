@@ -17,6 +17,8 @@ const baseEnv: EnvConfig = {
   minSpreadTicks: 3,
   toxicityCancelIfSpreadTicksLte: 1,
   maxOrderSizeUsd: 1.5,
+  minQuoteLifetimeMs: 500,
+  maxQuoteLifetimeMs: 10_000,
   maxExposureUsd: 10,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,

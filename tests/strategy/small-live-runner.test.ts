@@ -31,6 +31,8 @@ const envConfig: EnvConfig = {
   minSpreadTicks: 1,
   toxicityCancelIfSpreadTicksLte: 0,
   maxOrderSizeUsd: 2,
+  minQuoteLifetimeMs: 1_000,
+  maxQuoteLifetimeMs: 60_000,
   maxExposureUsd: 100,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,
@@ -87,6 +89,8 @@ describe('small-live runner wiring', () => {
     expect(config.marketFilter.minSpreadTicks).toBe(1);
     expect(config.toxicity.cancelIfSpreadTicksLte).toBe(0);
     expect(config.size.maxOrderSizeUsd).toBe(2);
+    expect(config.minQuoteLifetimeMs).toBe(1_000);
+    expect(config.maxQuoteLifetimeMs).toBe(60_000);
     expect(config.inventory.maxTotalStrategyExposureUsd).toBe(25);
     expect(config.risk.maxDailyDrawdownPct).toBe(2);
     expect(config.risk.maxDailyDrawdownUsd).toBe(5);

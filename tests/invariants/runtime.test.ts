@@ -81,6 +81,8 @@ describe('runtime invariants', () => {
     expect(env.minSpreadTicks).toBe(3);
     expect(env.toxicityCancelIfSpreadTicksLte).toBe(1);
     expect(env.maxOrderSizeUsd).toBe(1.5);
+    expect(env.minQuoteLifetimeMs).toBe(500);
+    expect(env.maxQuoteLifetimeMs).toBe(10_000);
     expect(env.telegramReportIntervalHours).toBe(3);
 
     process.env = ORIGINAL_ENV;

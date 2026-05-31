@@ -63,6 +63,8 @@ export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
       ...defaultConfig.risk,
       maxDailyDrawdownPct: envConfig.maxDrawdownPct * 100,
     },
+    minQuoteLifetimeMs: envConfig.minQuoteLifetimeMs,
+    maxQuoteLifetimeMs: envConfig.maxQuoteLifetimeMs,
   };
 }
 

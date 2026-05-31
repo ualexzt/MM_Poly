@@ -11,6 +11,8 @@ export interface EnvConfig {
   minSpreadTicks: number;
   toxicityCancelIfSpreadTicksLte: number;
   maxOrderSizeUsd: number;
+  minQuoteLifetimeMs: number;
+  maxQuoteLifetimeMs: number;
   maxExposureUsd: number;
   maxDrawdownPct: number;
   dailyReportHour: number;
@@ -103,6 +105,8 @@ export const env: EnvConfig = {
   minSpreadTicks: getEnvInt('MIN_SPREAD_TICKS', 3),
   toxicityCancelIfSpreadTicksLte: getEnvInt('TOXICITY_CANCEL_IF_SPREAD_TICKS_LTE', 1),
   maxOrderSizeUsd: getEnvFloat('MAX_ORDER_SIZE_USD', 1.5),
+  minQuoteLifetimeMs: getEnvInt('MIN_QUOTE_LIFETIME_MS', 500),
+  maxQuoteLifetimeMs: getEnvInt('MAX_QUOTE_LIFETIME_MS', 10_000),
   maxExposureUsd: getEnvFloat('MAX_EXPOSURE_USD', 10),
   maxDrawdownPct: getEnvFloat('MAX_DRAWDOWN_PCT', 0.02),
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
