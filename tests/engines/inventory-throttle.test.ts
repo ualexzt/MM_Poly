@@ -30,8 +30,8 @@ const profiles = {
 
 describe('inventory-throttle', () => {
   test('default config exposes $30 guarded small_live sizing and throttle profile', () => {
-    expect(defaultConfig.size.baseOrderSizeUsd).toBe(0.5);
-    expect(defaultConfig.size.maxOrderSizeUsd).toBe(0.9);
+    expect(defaultConfig.size.baseOrderSizeUsd).toBe(1);
+    expect(defaultConfig.size.maxOrderSizeUsd).toBe(1.0);
 
     expect(defaultConfig.inventory.maxMarketExposureUsd).toBe(3);
     expect(defaultConfig.inventory.maxEventExposureUsd).toBe(10);
