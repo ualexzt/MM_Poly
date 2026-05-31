@@ -14,12 +14,12 @@ const baseEnv: EnvConfig = {
   minLiquidityUsd: 5000,
   minVolume24hUsd: 10000,
   maxSpreadCents: 8,
-  maxExposureUsd: 25,
+  maxExposureUsd: 10,
   maxDrawdownPct: 0.02,
   dailyReportHour: 20,
   dailyReportMinute: 0,
   telegramReportIntervalHours: 3,
-  maxMarkets: 20,
+  maxMarkets: 2,
   liveTradingEnabled: true,
   privateKey: `0x${'a'.repeat(64)}`,
   clobApiKey: 'clob-key',
@@ -59,6 +59,27 @@ describe('small-live startup preflight', () => {
 
     expect(result.ok).toBe(false);
     expect(result.blockers).toContain('invalid_private_key');
+  });
+
+  test('blocks small_live when maxMarkets exceeds approved envelope', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, maxMarkets: 3 });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('max_markets_above_approved_limit');
+  });
+
+  test('blocks small_live when maxExposureUsd exceeds approved envelope', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, maxExposureUsd: 11 });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('max_exposure_above_approved_limit');
+  });
+
+  test('blocks small_live when Telegram credentials are missing', () => {
+    const result = validateSmallLiveStartupEnv({ ...baseEnv, telegramBotToken: '', telegramChatId: '' });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers).toContain('telegram_missing');
   });
 
   test('sends Telegram alert when blockers exist and Telegram credentials are configured', async () => {
