@@ -10,7 +10,7 @@ function makeMockClient() {
 }
 
 describe('live-order-submitter', () => {
-  test('submits post-only GTC order and returns orderId', async () => {
+  test('submits post-only GTC order and returns order result', async () => {
     const mockClient = makeMockClient();
     mockClient.createAndPostOrder.mockResolvedValue({ orderID: 'live-abc-123' });
 
@@ -33,15 +33,15 @@ describe('live-order-submitter', () => {
       riskFlags: [],
     };
 
-    const orderId = await submitter.submit(quote, { tickSize: 0.01, negRisk: false });
+    const result = await submitter.submit(quote, { tickSize: 0.01, negRisk: false });
 
-    expect(orderId).toBe('live-abc-123');
+    expect(result).toEqual({ orderID: 'live-abc-123' });
     expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
       expect.objectContaining({
         tokenID: 'token-yes',
         side: 'BUY',
-        price: 0.48,
-        size: 10,
+        price: '0.48',
+        size: '10',
       }),
       expect.objectContaining({ tickSize: '0.01', negRisk: false }),
       'GTC'
@@ -78,5 +78,14 @@ describe('live-order-submitter', () => {
     const result = await submitter.getOpenOrders();
 
     expect(result).toEqual(open);
+  });
+
+  test('propagates open order listing failures', async () => {
+    const mockClient = makeMockClient();
+    mockClient.getOpenOrders.mockRejectedValue(new Error('network down'));
+
+    const submitter = new LiveOrderSubmitter(mockClient as any);
+
+    await expect(submitter.getOpenOrders()).rejects.toThrow('network down');
   });
 });
