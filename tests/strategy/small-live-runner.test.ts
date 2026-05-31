@@ -11,6 +11,7 @@ import {
   ensureNoOpenLiveOrders,
   handleLiveUserEvent,
   shouldSendSmallLiveReport,
+  calculateOpenOrderNotionalUsd,
 } from '../../src/strategy/small-live-runner';
 import type { EnvConfig } from '../../src/config/env';
 import type { Logger } from '../../src/utils/logger';
@@ -57,6 +58,13 @@ describe('small-live runner wiring', () => {
     expect(shouldSendSmallLiveReport(last, exactInterval, 3)).toBe(true);
     expect(shouldSendSmallLiveReport(last, afterInterval, 3)).toBe(true);
     expect(shouldSendSmallLiveReport(last, afterInterval, 4)).toBe(false);
+  });
+
+  test('calculates remaining open order notional', () => {
+    expect(calculateOpenOrderNotionalUsd([
+      { price: '0.25', original_size: '10', size_matched: '4' },
+      { price: '0.50', original_size: '5', size_matched: '0' },
+    ])).toBeCloseTo(4.0);
   });
 
   test('builds a guarded small_live config from env overrides', () => {

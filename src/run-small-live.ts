@@ -23,6 +23,7 @@ import {
   createTrackingMarketScanner,
   handleLiveUserEvent,
   shouldSendSmallLiveReport,
+  calculateOpenOrderNotionalUsd,
 } from './strategy/small-live-runner';
 import { buildGoNoGoStartupBlockersFromEnv, notifyStartupBlockers, validateSmallLiveStartupEnv } from './strategy/small-live-preflight';
 
@@ -99,6 +100,8 @@ async function main() {
     : null;
   const metrics = new SmallLiveMetrics();
   let lastReportAtMs = Date.now();
+  let lastOpenOrdersCount = 0;
+  let lastOpenOrderNotionalUsd = 0;
   const tokenConditionIds = new Map<string, string>();
   const scanner = createTrackingMarketScanner(new GammaApiScanner(), tokenConditionIds);
   const initialMarkets = await scanner.fetchMarkets();
@@ -165,6 +168,29 @@ async function main() {
     cycleInFlight = true;
     try {
       const cycleStartedAtMs = Date.now();
+
+      if (config.mode === 'small_live' && config.liveTradingEnabled) {
+        const openOrders = await liveSubmitter.getOpenOrders();
+        const openOrderNotionalUsd = calculateOpenOrderNotionalUsd(openOrders);
+        lastOpenOrdersCount = openOrders.length;
+        lastOpenOrderNotionalUsd = openOrderNotionalUsd;
+
+        if (openOrderNotionalUsd > env.maxExposureUsd) {
+          if (telegram) {
+            await telegram.sendMessage(formatSmallLiveAlert({
+              severity: 'CRITICAL',
+              title: 'Open order exposure above limit',
+              detail: `openOrderNotionalUsd=${openOrderNotionalUsd.toFixed(2)}, maxExposureUsd=${env.maxExposureUsd}`,
+            }));
+          }
+          logger.error('Skipping small_live cycle: open order exposure above limit', {
+            openOrderNotionalUsd,
+            maxExposureUsd: env.maxExposureUsd,
+          });
+          return;
+        }
+      }
+
       await runner.runCycle(userStream.getConnectionStatus());
       metrics.recordCycleLag(Date.now() - cycleStartedAtMs);
 
@@ -176,8 +202,8 @@ async function main() {
           mode: config.mode,
           reportAt: new Date(now),
           balanceUsd: inventory.getPusdAvailable(),
-          openOrdersCount: 0,
-          openOrdersNotionalUsd: 0,
+          openOrdersCount: lastOpenOrdersCount,
+          openOrdersNotionalUsd: lastOpenOrderNotionalUsd,
           positionsCount: 0,
           positionsValueUsd: inventory.getTotalExposureUsd(),
           realizedPnlUsd: 0,

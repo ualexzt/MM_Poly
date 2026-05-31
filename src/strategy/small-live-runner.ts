@@ -16,6 +16,15 @@ export function shouldSendSmallLiveReport(lastReportAtMs: number, nowMs: number,
   return nowMs - lastReportAtMs >= intervalHours * 60 * 60 * 1000;
 }
 
+export function calculateOpenOrderNotionalUsd(openOrders: any[]): number {
+  return openOrders.reduce((sum, order) => {
+    const price = Number(order.price ?? 0);
+    const original = Number(order.original_size ?? order.size ?? 0);
+    const matched = Number(order.size_matched ?? 0);
+    return sum + price * Math.max(0, original - matched);
+  }, 0);
+}
+
 export function buildSmallLiveConfig(envConfig: EnvConfig): StrategyConfig {
   return {
     ...defaultConfig,
