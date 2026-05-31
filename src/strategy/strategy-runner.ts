@@ -120,7 +120,7 @@ export class StrategyRunner {
     if (ks === 'CANCEL_ALL' || ks === 'DISABLE_STRATEGY') {
       logger.warn('Kill switch triggered', { state: ks });
       await this.orderRouter.cancelAll();
-      if (ks === 'DISABLE_STRATEGY') return;
+      return;
     }
 
     // §11.1 step 1 — Fetch markets

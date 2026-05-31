@@ -389,6 +389,32 @@ describe('strategy-runner', () => {
     );
   });
 
+  test('cancels live orders and skips market processing when user ws has never connected', async () => {
+    const scanner = { fetchMarkets: jest.fn().mockResolvedValue([]) };
+    const bookClient = { fetchBook: jest.fn() };
+    const mockClient = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'should-not-submit' }),
+      cancelOrder: jest.fn().mockResolvedValue({}),
+      getOpenOrders: jest.fn().mockResolvedValue([{ id: 'live-to-cancel' }]),
+    };
+    const runner = new StrategyRunner({
+      config: { ...defaultConfig, mode: 'small_live' as const, liveTradingEnabled: true },
+      scanner,
+      bookClient,
+      paperEngine: new PaperExecutionEngine(),
+      liveSubmitter: new LiveOrderSubmitter(mockClient as any),
+      logger: silentLogger,
+    });
+
+    await runner.runCycle({ connected: false, disconnectedAt: null });
+
+    expect(mockClient.getOpenOrders).toHaveBeenCalledTimes(1);
+    expect(mockClient.cancelOrder).toHaveBeenCalledWith('live-to-cancel');
+    expect(scanner.fetchMarkets).not.toHaveBeenCalled();
+    expect(bookClient.fetchBook).not.toHaveBeenCalled();
+    expect(mockClient.createAndPostOrder).not.toHaveBeenCalled();
+  });
+
   test('attempts to cancel both live sides even when one cancel fails', async () => {
     const market: MarketState = {
       conditionId: 'cond-live-cancel', yesTokenId: 'yes-live', noTokenId: 'no-live', active: true, closed: false,

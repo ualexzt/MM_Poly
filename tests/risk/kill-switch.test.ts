@@ -11,6 +11,11 @@ describe('kill-switch', () => {
     expect(ks.check({ connected: false, disconnectedAt: Date.now() - 5000 }, { errorsLast60s: 0, totalLast60s: 100 }, { currentDrawdownPct: 0 })).toBe('CANCEL_ALL');
   });
 
+  test('cancel all when ws has never connected', () => {
+    const ks = new KillSwitch({ cancelAllOnWsDisconnectSeconds: 3 });
+    expect(ks.check({ connected: false, disconnectedAt: null }, { errorsLast60s: 0, totalLast60s: 100 }, { currentDrawdownPct: 0 })).toBe('CANCEL_ALL');
+  });
+
   test('disables strategy at absolute drawdown limit', () => {
     const ks = new KillSwitch({ maxDailyDrawdownUsd: 5 });
 

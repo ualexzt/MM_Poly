@@ -36,7 +36,9 @@ export class KillSwitch {
    */
   check(ws: WsStatus, api: ApiErrorWindow, drawdown: Drawdown): KillSwitchState {
     // WS disconnect (§13.2)
-    if (!ws.connected && ws.disconnectedAt !== null) {
+    if (!ws.connected) {
+      if (ws.disconnectedAt === null) return 'CANCEL_ALL';
+
       const seconds = (Date.now() - ws.disconnectedAt) / 1000;
       if (this.config.cancelAllOnWsDisconnectSeconds != null &&
           seconds >= this.config.cancelAllOnWsDisconnectSeconds) {
