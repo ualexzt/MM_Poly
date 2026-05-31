@@ -35,15 +35,9 @@ export class KillSwitch {
    *  - consecutive_adverse_fills → CANCEL_MARKET (caller picks the market)
    */
   check(ws: WsStatus, api: ApiErrorWindow, drawdown: Drawdown): KillSwitchState {
-    // WS disconnect (§13.2)
+    // WS disconnect (§13.2) — fail closed immediately for user stream disconnects.
     if (!ws.connected) {
-      if (ws.disconnectedAt === null) return 'CANCEL_ALL';
-
-      const seconds = (Date.now() - ws.disconnectedAt) / 1000;
-      if (this.config.cancelAllOnWsDisconnectSeconds != null &&
-          seconds >= this.config.cancelAllOnWsDisconnectSeconds) {
-        return 'CANCEL_ALL';
-      }
+      return 'CANCEL_ALL';
     }
 
     // API error rate (§13.2)

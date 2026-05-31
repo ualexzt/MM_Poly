@@ -6,7 +6,12 @@ describe('kill-switch', () => {
     expect(ks.check({ connected: true, disconnectedAt: null }, { errorsLast60s: 0, totalLast60s: 100 }, { currentDrawdownPct: 0 })).toBe('OK');
   });
 
-  test('cancel all on ws disconnect', () => {
+  test('cancel all immediately on recent ws disconnect', () => {
+    const ks = new KillSwitch({ cancelAllOnWsDisconnectSeconds: 3 });
+    expect(ks.check({ connected: false, disconnectedAt: Date.now() }, { errorsLast60s: 0, totalLast60s: 100 }, { currentDrawdownPct: 0 })).toBe('CANCEL_ALL');
+  });
+
+  test('cancel all on stale ws disconnect', () => {
     const ks = new KillSwitch({ cancelAllOnWsDisconnectSeconds: 3 });
     expect(ks.check({ connected: false, disconnectedAt: Date.now() - 5000 }, { errorsLast60s: 0, totalLast60s: 100 }, { currentDrawdownPct: 0 })).toBe('CANCEL_ALL');
   });
