@@ -21,6 +21,7 @@ const envConfig: EnvConfig = {
   nodeEnv: 'test',
   telegramBotToken: 'test-token',
   telegramChatId: 'test-chat',
+  telegramReportIntervalHours: 3,
   mode: 'small_live',
   minLiquidityUsd: 7000,
   minVolume24hUsd: 12000,
