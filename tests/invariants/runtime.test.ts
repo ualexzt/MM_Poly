@@ -59,6 +59,30 @@ describe('runtime invariants', () => {
     process.env = ORIGINAL_ENV;
   });
 
+  test('small_live safety env defaults are conservative', () => {
+    jest.resetModules();
+    process.env = {
+      ...ORIGINAL_ENV,
+      TELEGRAM_BOT_TOKEN: 'test-token',
+      TELEGRAM_CHAT_ID: 'test-chat',
+      MODE: undefined,
+      LIVE_TRADING_ENABLED: undefined,
+      MAX_MARKETS: undefined,
+      MAX_EXPOSURE_USD: undefined,
+      TELEGRAM_REPORT_INTERVAL_HOURS: undefined,
+    };
+
+    const env = require('../../src/config/env').env;
+
+    expect(env.mode).toBe('paper');
+    expect(env.liveTradingEnabled).toBe(false);
+    expect(env.maxMarkets).toBeLessThanOrEqual(2);
+    expect(env.maxExposureUsd).toBeLessThanOrEqual(10);
+    expect(env.telegramReportIntervalHours).toBe(3);
+
+    process.env = ORIGINAL_ENV;
+  });
+
   test('go/no-go numeric env parsing rejects partial numbers', () => {
     jest.resetModules();
     process.env = {

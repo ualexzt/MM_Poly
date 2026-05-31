@@ -12,6 +12,7 @@ export interface EnvConfig {
   maxDrawdownPct: number;
   dailyReportHour: number;
   dailyReportMinute: number;
+  telegramReportIntervalHours?: number;
   maxMarkets: number;
   liveTradingEnabled: boolean;
   privateKey?: string;
@@ -96,11 +97,12 @@ export const env: EnvConfig = {
   minLiquidityUsd: getEnvFloat('MIN_LIQUIDITY_USD', 5000),
   minVolume24hUsd: getEnvFloat('MIN_VOLUME_24H_USD', 10000),
   maxSpreadCents: getEnvFloat('MAX_SPREAD_CENTS', 8),
-  maxExposureUsd: getEnvFloat('MAX_EXPOSURE_USD', 100),
+  maxExposureUsd: getEnvFloat('MAX_EXPOSURE_USD', 10),
   maxDrawdownPct: getEnvFloat('MAX_DRAWDOWN_PCT', 0.02),
   dailyReportHour: getEnvInt('DAILY_REPORT_HOUR', 20),
   dailyReportMinute: getEnvInt('DAILY_REPORT_MINUTE', 0),
-  maxMarkets: getEnvInt('MAX_MARKETS', 20),
+  telegramReportIntervalHours: getEnvFloat('TELEGRAM_REPORT_INTERVAL_HOURS', 3),
+  maxMarkets: getEnvInt('MAX_MARKETS', 2),
   liveTradingEnabled: getEnvBool('LIVE_TRADING_ENABLED', false),
   privateKey: process.env.PRIVATE_KEY,
   clobApiKey: process.env.CLOB_API_KEY,
