@@ -13,6 +13,10 @@ export const defaultConfig: StrategyConfig = {
     minVolume24hUsd: 10000, minLiquidityUsd: 5000,
     minBestLevelDepthUsd: 100, minDepth3LevelsUsd: 500,
     minSpreadTicks: 3, maxSpreadCents: 100,
+    rejectPathologicalWideBooks: true,
+    pathologicalBestBidLte: 0.001,
+    pathologicalBestAskGte: 0.999,
+    maxMinOrderExposurePct: 20,
     minTimeToResolutionMinutes: 90, disableNearResolutionMinutes: 30,
     maxOracleAmbiguityScore: 0.20, requireValidResolutionSource: false
   },

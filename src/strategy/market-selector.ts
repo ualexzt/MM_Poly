@@ -2,6 +2,8 @@ import { MarketState } from '../types/market';
 import { MarketFilterConfig } from '../types/config';
 import { BookState } from '../types/book';
 
+const APPROVED_SMALL_LIVE_EXPOSURE_USD = 10;
+
 /**
  * Checks all 14 hard market filters from §4.1.
  * A market is eligible only if ALL required hard filters pass.
@@ -50,6 +52,20 @@ export function isMarketEligible(
     if (yesBook.midpoint === null) return false;
     if (yesBook.midpoint < config.midpointMin) return false;
     if (yesBook.midpoint > config.midpointMax) return false;
+
+    if (
+      config.rejectPathologicalWideBooks &&
+      yesBook.bestBid !== null &&
+      yesBook.bestAsk !== null &&
+      yesBook.bestBid <= config.pathologicalBestBidLte &&
+      yesBook.bestAsk >= config.pathologicalBestAskGte
+    ) {
+      return false;
+    }
+
+    const minOrderUsd = yesBook.minOrderSize * yesBook.midpoint;
+    const maxMinOrderUsd = (config.maxMinOrderExposurePct / 100) * APPROVED_SMALL_LIVE_EXPOSURE_USD;
+    if (minOrderUsd > maxMinOrderUsd) return false;
 
     // Depth filters
     if (yesBook.depth1Usd < config.minBestLevelDepthUsd) return false;

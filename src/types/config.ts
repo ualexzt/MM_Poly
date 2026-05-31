@@ -21,6 +21,10 @@ export interface MarketFilterConfig {
   minDepth3LevelsUsd: number;
   minSpreadTicks: number;
   maxSpreadCents: number;
+  rejectPathologicalWideBooks: boolean;
+  pathologicalBestBidLte: number;
+  pathologicalBestAskGte: number;
+  maxMinOrderExposurePct: number;
   minTimeToResolutionMinutes: number;
   disableNearResolutionMinutes: number;
   maxOracleAmbiguityScore: number;
