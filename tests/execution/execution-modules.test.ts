@@ -227,6 +227,48 @@ describe('execution tests', () => {
       );
     });
 
+    test('submits adjusted post-only price when live quote would cross', async () => {
+      const paperEngine = new PaperExecutionEngine();
+      const mockClient = {
+        createAndPostOrder: jest.fn().mockResolvedValue({ orderID: 'live-adjusted-1' }),
+        cancelOrder: jest.fn().mockResolvedValue({}),
+        getOpenOrders: jest.fn().mockResolvedValue([]),
+      };
+      const liveSubmitter = new LiveOrderSubmitter(mockClient as any);
+      const router = new OrderRouter(paperEngine, { mode: 'small_live', liveTradingEnabled: true }, liveSubmitter);
+
+      const quote: QuoteCandidate = {
+        conditionId: 'c1', tokenId: 'yes1', side: 'BUY', price: 0.55, size: 10, sizeUsd: 5.5,
+        postOnly: true, orderType: 'GTC', fairPrice: 0.50, targetHalfSpreadCents: 5,
+        inventorySkewCents: 0, toxicityScore: 0, reason: 'test', riskFlags: []
+      };
+
+      const book: BookState = {
+        tokenId: 'yes1', conditionId: 'c1',
+        bids: [], asks: [],
+        bestBid: 0.45, bestAsk: 0.55,
+        bestBidSizeUsd: 100, bestAskSizeUsd: 100,
+        midpoint: 0.50, spread: 0.10, spreadTicks: 10,
+        depth1Usd: 100, depth3Usd: 500,
+        tickSize: 0.01, minOrderSize: 5,
+        lastUpdateMs: Date.now()
+      };
+
+      const result = await router.route(quote, book, null, {
+        exposureAllowed: true,
+        sellInventoryAvailable: true,
+        killSwitchActive: false,
+      });
+
+      expect(result.submitted).toBe(true);
+      expect(mockClient.createAndPostOrder).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenID: 'yes1', side: 'BUY', price: '0.54', size: '10' }),
+        expect.anything(),
+        'GTC',
+        true
+      );
+    });
+
     test('returns immediate fill details for matched live orders', async () => {
       const paperEngine = new PaperExecutionEngine();
       const mockClient = {

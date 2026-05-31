@@ -116,7 +116,11 @@ export class OrderRouter {
           cancelledExistingOrderId = existingOrderId;
         }
 
-        const result = await this.liveSubmitter.submit(quote, {
+        const submitQuote = postOnly.adjustedPrice !== undefined
+          ? { ...quote, price: postOnly.adjustedPrice, sizeUsd: quote.size * postOnly.adjustedPrice }
+          : quote;
+
+        const result = await this.liveSubmitter.submit(submitQuote, {
           tickSize: book.tickSize,
         });
 
