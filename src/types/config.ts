@@ -62,6 +62,7 @@ export interface ToxicityConfig {
   cancelIfLargeTradeUsdGte: number;
   cancelIfHashChanges10sGte: number;
   cancelIfSpreadTicksLte: number;
+  cancelIfBookStaleMsGte: number;
   cooldownAfterCancelSeconds: number;
 }
 

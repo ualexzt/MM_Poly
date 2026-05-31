@@ -15,6 +15,8 @@ export interface RouteResult {
   orderId?: string;
   reason: string;
   cancelledExistingOrderId?: string;
+  filledSize?: number;
+  filledPrice?: number;
 }
 
 /**
@@ -114,11 +116,18 @@ export class OrderRouter {
           cancelledExistingOrderId = existingOrderId;
         }
 
-        const orderId = await this.liveSubmitter.submit(quote, {
+        const result = await this.liveSubmitter.submit(quote, {
           tickSize: book.tickSize,
         });
 
-        return { submitted: true, orderId, reason: 'live_submitted', cancelledExistingOrderId };
+        return {
+          submitted: true,
+          orderId: result.orderID,
+          reason: 'live_submitted',
+          cancelledExistingOrderId,
+          filledSize: result.filledSize,
+          filledPrice: result.filledPrice,
+        };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         return { submitted: false, reason: `live_error:${message}`, cancelledExistingOrderId };

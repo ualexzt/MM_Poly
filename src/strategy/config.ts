@@ -57,6 +57,7 @@ export const defaultConfig: StrategyConfig = {
     cancelIfLargeTradeUsdGte: 1000,
     cancelIfHashChanges10sGte: 8,
     cancelIfSpreadTicksLte: 1,
+    cancelIfBookStaleMsGte: 15000,
     cooldownAfterCancelSeconds: 30
   },
   risk: {

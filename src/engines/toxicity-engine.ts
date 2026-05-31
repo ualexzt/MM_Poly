@@ -54,7 +54,7 @@ export function checkHardToxicityCancel(inputs: HardToxicityInputs, config: Toxi
   if (inputs.bookHashChanges10s >= config.cancelIfHashChanges10sGte) return true;
   if (inputs.spreadTicks <= config.cancelIfSpreadTicksLte) return true;
   // C6: §8.4 — stale book and WS disconnect hard cancel
-  if (inputs.bookStaleMs >= 2000) return true;
+  if (inputs.bookStaleMs >= config.cancelIfBookStaleMsGte) return true;
   if (inputs.wsDisconnectedSeconds >= 3) return true;
   return false;
 }

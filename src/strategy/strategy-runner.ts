@@ -408,6 +408,11 @@ export class StrategyRunner {
         } else {
           slots.sell = { orderId: routeResult.orderId, price: candidate.price, size: candidate.size, submittedAt: Date.now() };
         }
+
+        // §11.2 — Immediate live fill tracking (e.g. post-only crossed and matched)
+        if (config.mode === 'small_live' && routeResult.filledSize && routeResult.filledSize > 0) {
+          this.onFill(market.conditionId, market.yesTokenId, side, routeResult.filledPrice ?? candidate.price, routeResult.filledSize);
+        }
       }
     }
   }

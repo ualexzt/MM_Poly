@@ -1,5 +1,11 @@
 import { QuoteCandidate } from '../types/quote';
 
+export interface LiveOrderResult {
+  orderID: string;
+  filledSize?: number;
+  filledPrice?: number;
+}
+
 export interface LiveOrderSubmitterClient {
   createAndPostOrder(
     orderArgs: {
@@ -10,7 +16,7 @@ export interface LiveOrderSubmitterClient {
     },
     options: { tickSize: string; negRisk?: boolean },
     orderType: 'GTC' | 'FOK' | 'FAK'
-  ): Promise<{ orderID: string }>;
+  ): Promise<{ orderID: string; takingAmount?: string; makingAmount?: string }>;
   cancelOrder(orderId: string): Promise<any>;
   getOpenOrders(): Promise<any[]>;
 }
@@ -23,7 +29,7 @@ export interface LiveMarketMeta {
 export class LiveOrderSubmitter {
   constructor(private client: LiveOrderSubmitterClient) {}
 
-  async submit(quote: QuoteCandidate, meta: LiveMarketMeta): Promise<string> {
+  async submit(quote: QuoteCandidate, meta: LiveMarketMeta): Promise<LiveOrderResult> {
     console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_START', tokenId: quote.tokenId?.slice(0,20), side: quote.side, price: quote.price, size: quote.size, tickSize: meta.tickSize, negRisk: meta.negRisk }));
     const resp = await this.client.createAndPostOrder(
       {
@@ -39,7 +45,13 @@ export class LiveOrderSubmitter {
       'GTC'
     );
     console.log(JSON.stringify({ level: 'info', time: Date.now(), message: 'SUBMIT_RESULT', resp: JSON.stringify(resp).slice(0, 200) }));
-    return resp.orderID;
+
+    const takingAmount = parseFloat(resp.takingAmount || '0');
+    const makingAmount = parseFloat(resp.makingAmount || '0');
+    const filledSize = takingAmount > 0 ? takingAmount : undefined;
+    const filledPrice = (filledSize && filledSize > 0) ? (makingAmount / filledSize) : undefined;
+
+    return { orderID: resp.orderID, filledSize, filledPrice };
   }
 
   async cancel(orderId: string): Promise<void> {
