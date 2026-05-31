@@ -53,7 +53,7 @@ function mapClobBook(data: any, tokenId: string, conditionId: string): BookState
     tickSize,
     minOrderSize,
     orderbookHash: data.hash || null,
-    lastUpdateMs: parseInt(data.timestamp) || Date.now()
+    lastUpdateMs: (parseInt(data.timestamp) * 1000) || Date.now()
   };
 }
 
