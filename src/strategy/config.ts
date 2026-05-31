@@ -23,9 +23,9 @@ export const defaultConfig: StrategyConfig = {
     rewardTighteningMaxCents: 0.5
   },
   size: {
-    baseOrderSizeUsd: 1, maxOrderSizeUsd: 1.5,
+    baseOrderSizeUsd: 0.5, maxOrderSizeUsd: 0.9,
     minSizeMultiplierOverExchangeMin: 1.2,
-    respectRewardMinIncentiveSize: true
+    respectRewardMinIncentiveSize: false
   },
   inventory: {
     maxMarketExposureUsd: 3, maxEventExposureUsd: 10,
@@ -71,7 +71,7 @@ export const defaultConfig: StrategyConfig = {
     queueAheadSize: 5,
     fillFractionAfterQueue: 0.5,
   },
-  refreshIntervalMs: 1000,
+  refreshIntervalMs: 5000,
   staleOrderMaxAgeMs: 30_000,
   minQuoteLifetimeMs: 500,
   maxQuoteLifetimeMs: 10000
