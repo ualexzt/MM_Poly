@@ -23,7 +23,7 @@ export const defaultConfig: StrategyConfig = {
     rewardTighteningMaxCents: 0.5
   },
   size: {
-    baseOrderSizeUsd: 1, maxOrderSizeUsd: 1.0,
+    baseOrderSizeUsd: 1, maxOrderSizeUsd: 1.5,
     minSizeMultiplierOverExchangeMin: 1.2,
     respectRewardMinIncentiveSize: false
   },
