@@ -7,6 +7,7 @@ export interface GammaMicroGabagoolScannerConfig {
   maxMarketsPerScan: number;
   fetchFn?: typeof fetch;
   nowMs: () => number;
+  timeoutMs?: number;
 }
 
 export interface MicroGabagoolOrderbookReader {
@@ -53,11 +54,24 @@ function extractEndMs(market: GammaMarketPayload): number | null {
   return Number.isFinite(endMs) ? endMs : null;
 }
 
+function isValidTopOfBook(topOfBook: MicroGabagoolTopOfBook): boolean {
+  return Number.isFinite(topOfBook.bestBid)
+    && Number.isFinite(topOfBook.bestAsk)
+    && Number.isFinite(topOfBook.bestBidSizeUsd)
+    && Number.isFinite(topOfBook.bestAskSizeUsd)
+    && topOfBook.bestBid > 0
+    && topOfBook.bestBid < topOfBook.bestAsk
+    && topOfBook.bestAsk < 1
+    && topOfBook.bestBidSizeUsd > 0
+    && topOfBook.bestAskSizeUsd > 0;
+}
+
 export class GammaMicroGabagoolScanner {
   private readonly gammaBaseUrl: string;
   private readonly maxMarketsPerScan: number;
   private readonly fetchFn: typeof fetch;
   private readonly nowMs: () => number;
+  private readonly timeoutMs: number;
   private readonly rollingStats: RollingMarketStats;
 
   constructor(
@@ -69,11 +83,23 @@ export class GammaMicroGabagoolScanner {
     this.maxMarketsPerScan = config.maxMarketsPerScan;
     this.fetchFn = config.fetchFn ?? fetch;
     this.nowMs = config.nowMs;
+    this.timeoutMs = config.timeoutMs ?? 10_000;
     this.rollingStats = rollingStats;
   }
 
   async scan(): Promise<MarketCandidate[]> {
-    const response = await this.fetchFn(`${this.gammaBaseUrl}/markets?active=true&closed=false&limit=${this.maxMarketsPerScan}`);
+    const abortController = new AbortController();
+    const timeout = setTimeout(() => abortController.abort(), this.timeoutMs);
+    let response: Response;
+
+    try {
+      response = await this.fetchFn(
+        `${this.gammaBaseUrl}/markets?active=true&closed=false&limit=${this.maxMarketsPerScan}`,
+        { signal: abortController.signal },
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!response.ok) {
       throw new Error(`Gamma API error: ${response.status}`);
     }
@@ -113,7 +139,7 @@ export class GammaMicroGabagoolScanner {
         continue;
       }
 
-      if (!topOfBook) {
+      if (!topOfBook || !isValidTopOfBook(topOfBook)) {
         continue;
       }
 

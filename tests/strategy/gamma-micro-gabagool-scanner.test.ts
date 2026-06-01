@@ -19,6 +19,7 @@ function createScanner(params: {
   nowMs?: () => number;
   gammaBaseUrl?: string;
   maxMarketsPerScan?: number;
+  timeoutMs?: number;
 }) {
   const fetchFn = jest.fn().mockImplementation(() => okResponse(params.gammaMarkets));
   const orderbook = params.orderbook ?? {
@@ -35,6 +36,7 @@ function createScanner(params: {
     maxMarketsPerScan: params.maxMarketsPerScan ?? 7,
     fetchFn,
     nowMs: params.nowMs ?? (() => Date.parse('2026-06-01T12:00:00.000Z')),
+    timeoutMs: params.timeoutMs,
   }, orderbook);
 
   return { scanner, fetchFn, orderbook };
@@ -66,7 +68,56 @@ describe('GammaMicroGabagoolScanner', () => {
       wmpDelta3Min: 0,
       spreadChangesLast60Sec: 0,
     }]);
-    expect(fetchFn).toHaveBeenCalledWith('https://gamma.test/markets?active=true&closed=false&limit=7');
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn.mock.calls[0][0]).toBe('https://gamma.test/markets?active=true&closed=false&limit=7');
+    expect(fetchFn.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('accepts timeoutMs config and passes an AbortSignal to Gamma fetch', async () => {
+    const { scanner, fetchFn } = createScanner({ gammaMarkets: [], timeoutMs: 123 });
+
+    await expect(scanner.scan()).resolves.toEqual([]);
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fetchFn.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetchFn.mock.calls[0][1]?.signal.aborted).toBe(false);
+  });
+
+  it('aborts stalled Gamma fetch after timeoutMs', async () => {
+    jest.useFakeTimers();
+
+    try {
+      let observedSignal: AbortSignal | undefined;
+      const fetchFn = jest.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+        observedSignal = init?.signal ?? undefined;
+        return new Promise<Response>((_resolve, reject) => {
+          observedSignal?.addEventListener('abort', () => {
+            reject(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        });
+      });
+      const scanner = new GammaMicroGabagoolScanner({
+        gammaBaseUrl: 'https://gamma.test',
+        maxMarketsPerScan: 5,
+        fetchFn,
+        nowMs: () => Date.parse('2026-06-01T12:00:00.000Z'),
+        timeoutMs: 50,
+      }, { getTopOfBook: jest.fn() });
+
+      const scanPromise = scanner.scan();
+
+      expect(fetchFn).toHaveBeenCalledTimes(1);
+      expect(observedSignal).toBeDefined();
+      expect(observedSignal?.aborted).toBe(false);
+
+      const rejection = expect(scanPromise).rejects.toMatchObject({ name: 'AbortError' });
+      jest.advanceTimersByTime(50);
+
+      expect(observedSignal?.aborted).toBe(true);
+      await rejection;
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('parses clobTokenIds when it is a JSON string and uses token index 0', async () => {
@@ -117,6 +168,15 @@ describe('GammaMicroGabagoolScanner', () => {
     expect(orderbook.getTopOfBook).not.toHaveBeenCalled();
   });
 
+  it('skips market with blank conditionId', async () => {
+    const { scanner, orderbook } = createScanner({
+      gammaMarkets: [{ active: true, closed: false, conditionId: '   ', clobTokenIds: ['yes-token'], endDate: '2026-06-01T13:00:00.000Z' }],
+    });
+
+    await expect(scanner.scan()).resolves.toEqual([]);
+    expect(orderbook.getTopOfBook).not.toHaveBeenCalled();
+  });
+
   it('skips market without YES token id or with malformed clobTokenIds', async () => {
     const { scanner, orderbook } = createScanner({
       gammaMarkets: [
@@ -131,6 +191,26 @@ describe('GammaMicroGabagoolScanner', () => {
     expect(orderbook.getTopOfBook).not.toHaveBeenCalled();
   });
 
+  it('accepts valid active market using end_date_iso', async () => {
+    const now = Date.parse('2026-06-01T12:00:00.000Z');
+    const { scanner } = createScanner({
+      nowMs: () => now,
+      gammaMarkets: [{
+        active: true,
+        closed: false,
+        conditionId: 'condition-snake-date',
+        clobTokenIds: ['yes-snake-date'],
+        end_date_iso: new Date(now + 30 * 60_000).toISOString(),
+      }],
+    });
+
+    await expect(scanner.scan()).resolves.toEqual([expect.objectContaining({
+      conditionId: 'condition-snake-date',
+      tokenId: 'yes-snake-date',
+      timeToSettlementMin: 30,
+    })]);
+  });
+
   it('skips market without valid end date', async () => {
     const { scanner, orderbook } = createScanner({
       gammaMarkets: [
@@ -141,6 +221,63 @@ describe('GammaMicroGabagoolScanner', () => {
 
     await expect(scanner.scan()).resolves.toEqual([]);
     expect(orderbook.getTopOfBook).not.toHaveBeenCalled();
+  });
+
+  it('skips invalid top-of-book values', async () => {
+    const invalidBooks: MicroGabagoolTopOfBook[] = [
+      { bestBid: Number.NaN, bestAsk: 0.5, bestBidSizeUsd: 10, bestAskSizeUsd: 10 },
+      { bestBid: 0.4, bestAsk: Number.POSITIVE_INFINITY, bestBidSizeUsd: 10, bestAskSizeUsd: 10 },
+      { bestBid: 0.6, bestAsk: 0.5, bestBidSizeUsd: 10, bestAskSizeUsd: 10 },
+      { bestBid: 0, bestAsk: 0.5, bestBidSizeUsd: 10, bestAskSizeUsd: 10 },
+      { bestBid: 0.4, bestAsk: 1, bestBidSizeUsd: 10, bestAskSizeUsd: 10 },
+      { bestBid: 0.4, bestAsk: 0.5, bestBidSizeUsd: 0, bestAskSizeUsd: 10 },
+      { bestBid: 0.4, bestAsk: 0.5, bestBidSizeUsd: 10, bestAskSizeUsd: -1 },
+    ];
+    const orderbook = {
+      getTopOfBook: jest.fn<Promise<MicroGabagoolTopOfBook | null>, [string]>()
+        .mockImplementation(async () => invalidBooks.shift() ?? null),
+    };
+    const { scanner } = createScanner({
+      orderbook,
+      gammaMarkets: [
+        { active: true, closed: false, conditionId: 'nan-bid', clobTokenIds: ['yes-1'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'infinite-ask', clobTokenIds: ['yes-2'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'crossed-book', clobTokenIds: ['yes-3'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'zero-bid', clobTokenIds: ['yes-4'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'ask-one', clobTokenIds: ['yes-5'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'zero-bid-size', clobTokenIds: ['yes-6'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'negative-ask-size', clobTokenIds: ['yes-7'], endDate: '2026-06-01T13:00:00.000Z' },
+      ],
+    });
+
+    await expect(scanner.scan()).resolves.toEqual([]);
+    expect(orderbook.getTopOfBook).toHaveBeenCalledTimes(7);
+  });
+
+  it('skips null orderbook and returns a valid later market', async () => {
+    const orderbook = {
+      getTopOfBook: jest.fn<Promise<MicroGabagoolTopOfBook | null>, [string]>()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          bestBid: 0.5,
+          bestAsk: 0.55,
+          bestBidSizeUsd: 50,
+          bestAskSizeUsd: 55,
+        }),
+    };
+    const { scanner } = createScanner({
+      orderbook,
+      gammaMarkets: [
+        { active: true, closed: false, conditionId: 'condition-null', clobTokenIds: ['yes-null'], endDate: '2026-06-01T13:00:00.000Z' },
+        { active: true, closed: false, conditionId: 'condition-ok', clobTokenIds: ['yes-ok'], endDate: '2026-06-01T13:00:00.000Z' },
+      ],
+    });
+
+    const candidates = await scanner.scan();
+
+    expect(orderbook.getTopOfBook).toHaveBeenCalledTimes(2);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ conditionId: 'condition-ok', tokenId: 'yes-ok', bestBid: 0.5, bestAsk: 0.55 });
   });
 
   it('does not fail whole scan when one market orderbook fails and returns a valid later market', async () => {
