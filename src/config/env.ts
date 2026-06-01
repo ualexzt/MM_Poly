@@ -44,6 +44,15 @@ export interface EnvConfig {
   latencyArbMaxPositionUsd: number;
   latencyArbMaxDailyTrades: number;
   latencyArbCooldownMs: number;
+  latencyArbMarketAsset: 'BTC';
+  latencyArbMarketDurationMinutes: number;
+  latencyArbStartingBalanceUsd: number;
+  latencyArbOrderBalanceFraction: number;
+  latencyArbMaxOrderSizeUsd: number;
+  latencyArbMaxSpreadCents: number;
+  latencyArbMaxMarketAgeMs: number;
+  latencyArbSimulatedLatencyMs: number;
+  latencyArbLogDir: string;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -99,6 +108,13 @@ function getEnvRiskStatus(key: string, defaultValue: 'OK' | 'WARNING' | 'CRITICA
   throw new Error(`Invalid risk status for ${key}: ${val}`);
 }
 
+function getEnvLatencyAsset(key: string, defaultValue: 'BTC'): 'BTC' {
+  const val = process.env[key];
+  if (val === undefined) return defaultValue;
+  if (val === 'BTC') return val;
+  throw new Error(`Invalid latency arb asset for ${key}: ${val}`);
+}
+
 function getEnvList(key: string, defaultValue: string[]): string[] {
   const val = process.env[key];
   if (val === undefined || val.trim() === '') return defaultValue;
@@ -149,4 +165,13 @@ export const env: EnvConfig = {
   latencyArbMaxPositionUsd: getEnvFloat('LATENCY_ARB_MAX_POSITION_USD', 50),
   latencyArbMaxDailyTrades: getEnvInt('LATENCY_ARB_MAX_DAILY_TRADES', 20),
   latencyArbCooldownMs: getEnvInt('LATENCY_ARB_COOLDOWN_MS', 60000),
+  latencyArbMarketAsset: getEnvLatencyAsset('LATENCY_ARB_MARKET_ASSET', 'BTC'),
+  latencyArbMarketDurationMinutes: getEnvInt('LATENCY_ARB_MARKET_DURATION_MINUTES', 15),
+  latencyArbStartingBalanceUsd: getEnvFloat('LATENCY_ARB_STARTING_BALANCE_USD', 15.48),
+  latencyArbOrderBalanceFraction: getEnvFloat('LATENCY_ARB_ORDER_BALANCE_FRACTION', 0.10),
+  latencyArbMaxOrderSizeUsd: getEnvFloat('LATENCY_ARB_MAX_ORDER_SIZE_USD', 1.55),
+  latencyArbMaxSpreadCents: getEnvFloat('LATENCY_ARB_MAX_SPREAD_CENTS', 8),
+  latencyArbMaxMarketAgeMs: getEnvInt('LATENCY_ARB_MAX_MARKET_AGE_MS', 2000),
+  latencyArbSimulatedLatencyMs: getEnvInt('LATENCY_ARB_SIMULATED_LATENCY_MS', 750),
+  latencyArbLogDir: getEnv('LATENCY_ARB_LOG_DIR', 'logs'),
 };

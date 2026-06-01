@@ -56,6 +56,15 @@ const envConfig: EnvConfig = {
   latencyArbMaxPositionUsd: 50,
   latencyArbMaxDailyTrades: 20,
   latencyArbCooldownMs: 60000,
+  latencyArbMarketAsset: 'BTC',
+  latencyArbMarketDurationMinutes: 15,
+  latencyArbStartingBalanceUsd: 15.48,
+  latencyArbOrderBalanceFraction: 0.10,
+  latencyArbMaxOrderSizeUsd: 1.55,
+  latencyArbMaxSpreadCents: 8,
+  latencyArbMaxMarketAgeMs: 2000,
+  latencyArbSimulatedLatencyMs: 750,
+  latencyArbLogDir: 'logs',
 };
 
 const silentLogger: Logger = {

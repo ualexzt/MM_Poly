@@ -1,4 +1,15 @@
 export interface LatencyArbConfig {
+  // Live-like shadow soak config
+  marketAsset: 'BTC';
+  marketDurationMinutes: number;
+  startingBalanceUsd: number;
+  orderBalanceFraction: number;
+  maxOrderSizeUsd: number;
+  maxSpreadCents: number;
+  maxMarketAgeMs: number;
+  simulatedLatencyMs: number;
+  logDir: string;
+
   // Binance feed config
   symbols: string[];
 
@@ -26,6 +37,16 @@ export interface LatencyArbConfig {
 }
 
 export const defaultLatencyArbConfig: LatencyArbConfig = {
+  marketAsset: 'BTC',
+  marketDurationMinutes: 15,
+  startingBalanceUsd: 15.48,
+  orderBalanceFraction: 0.10,
+  maxOrderSizeUsd: 1.55,
+  maxSpreadCents: 8,
+  maxMarketAgeMs: 2000,
+  simulatedLatencyMs: 750,
+  logDir: 'logs',
+
   symbols: ['btcusdt', 'ethusdt'],
 
   lookbackSeconds: 60,
