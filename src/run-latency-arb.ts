@@ -13,6 +13,7 @@ import { buildLatencyArbSnapshot, LatencyArbExecutionSnapshot } from './strategy
 import { LatencyArbMarketFetcher, selectLatencyArbMarkets } from './strategy/latency-arb-market-selector';
 import { GammaSlugMarketFetcher } from './strategy/gamma-slug-market-fetcher';
 import { LatencyArbStrategy } from './strategy/latency-arb-strategy';
+import { TelegramNotifier } from './notifier/telegram';
 import { ConsoleLogger } from './utils/logger';
 
 const logger = new ConsoleLogger();
@@ -34,6 +35,7 @@ export interface RunLatencyArbCycleDeps {
   shadowExecutor?: LatencyArbShadowExecutor;
   onWouldOrder?: (order: WouldOrder) => void;
   onExecutionSnapshot?: (conditionId: string, execution: LatencyArbExecutionSnapshot, nowMs: number) => void;
+  notifyTelegram?: (text: string) => void;
 }
 
 export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<void> {
@@ -110,6 +112,15 @@ export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<
 
   if (result.ok) {
     deps.onWouldOrder?.(result.order);
+    deps.notifyTelegram?.(
+      `🎯 *Latency Arb Signal*\n` +
+      `Action: ${signal.action}\n` +
+      `Confidence: ${(signal.confidence * 100).toFixed(0)}%\n` +
+      `Divergence: ${signal.divergencePct.toFixed(1)}%\n` +
+      `EV: ${signal.expectedValuePct.toFixed(1)}%\n` +
+      `Market: ${market.slug}\n` +
+      `Size: $${result.order.sizeUsd.toFixed(2)}`
+    );
   }
 }
 
@@ -168,6 +179,20 @@ async function main() {
     minConfidence: env.latencyArbMinConfidence,
   }, (event) => writer.write(event));
 
+  const telegram = env.telegramBotToken && env.telegramChatId
+    ? new TelegramNotifier({ botToken: env.telegramBotToken, chatId: env.telegramChatId })
+    : null;
+
+  // Send startup notification
+  if (telegram) {
+    await telegram.sendMessage(
+      `🚀 *Latency Arb Shadow Soak Started*\n` +
+      `Mode: ${env.mode}\n` +
+      `Asset: ${env.latencyArbMarketAsset} ${env.latencyArbMarketDurationMinutes}m\n` +
+      `Balance: $${env.latencyArbStartingBalanceUsd}`
+    );
+  }
+
   // Handle shutdown
   process.on('SIGINT', () => {
     logger.info('Shutting down...');
@@ -193,6 +218,7 @@ async function main() {
       writeEvent: (event) => writer.write(event),
       currentExposureUsd: () => positionTracker.getOpenExposureUsd(),
       shadowExecutor,
+      notifyTelegram: (text) => telegram?.sendMessage(text).catch(() => {}),
       onWouldOrder: (order) => positionTracker.addPendingOrder(order),
       onExecutionSnapshot: (conditionId, execution, nowMs) => {
         positionTracker.processPending(new Map([[conditionId, execution]]), nowMs);
