@@ -24,9 +24,16 @@ const DEFAULT_CONFIG: BinanceWsFeedConfig = {
 };
 
 function finiteNumberFromString(value: unknown): number | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  return null;
 }
 
 function nonEmptyString(value: unknown): string | null {

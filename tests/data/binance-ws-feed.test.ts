@@ -103,6 +103,9 @@ describe('BinanceWsFeed', () => {
     };
 
     expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, c: 'not-a-number' } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, c: '' } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, c: '   ' } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, t: '' } })).toBeNull();
     expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, h: undefined } })).toBeNull();
     expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, l: null } })).toBeNull();
     expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, v: 'NaN' } })).toBeNull();
