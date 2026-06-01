@@ -1,4 +1,31 @@
+import { EventEmitter } from 'events';
 import { BinanceWsFeed, PriceUpdate } from '../../src/data/binance-ws-feed';
+
+const mockWsInstances: Array<{
+  on: jest.Mock;
+  close: jest.Mock;
+  removeAllListeners: jest.Mock;
+  emit: (event: string, ...args: unknown[]) => boolean;
+}> = [];
+
+jest.mock('ws', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation(() => {
+    const emitter = new EventEmitter();
+    const instance = {
+      on: jest.fn((event: string, cb: (...args: unknown[]) => void) => {
+        emitter.on(event, cb);
+      }),
+      close: jest.fn(),
+      removeAllListeners: jest.fn(() => {
+        emitter.removeAllListeners();
+      }),
+      emit: (event: string, ...args: unknown[]) => emitter.emit(event, ...args),
+    };
+    mockWsInstances.push(instance);
+    return instance;
+  }),
+}));
 
 describe('BinanceWsFeed', () => {
   it('should create feed with default config', () => {
@@ -61,6 +88,41 @@ describe('BinanceWsFeed', () => {
       onError,
     });
     expect(feed.isConnected()).toBe(false);
+  });
+
+  it('should not reconnect after disconnect', () => {
+    jest.useFakeTimers();
+    mockWsInstances.length = 0;
+
+    const feed = new BinanceWsFeed({
+      symbols: ['btcusdt'],
+      reconnectIntervalMs: 1000,
+    });
+
+    feed.connect();
+    const ws = mockWsInstances[0];
+
+    // Simulate 'open' event to set connected=true
+    ws.emit('open');
+    expect(feed.isConnected()).toBe(true);
+
+    // Disconnect — this should remove listeners, close ws, and set stopped=true
+    feed.disconnect();
+    expect(feed.isConnected()).toBe(false);
+    expect(ws.removeAllListeners).toHaveBeenCalled();
+    expect(ws.close).toHaveBeenCalled();
+
+    // Even if a 'close' event fires after removeAllListeners, it should not reconnect.
+    // Simulate the close event anyway to prove the guard works.
+    ws.emit('close');
+
+    // Advance time past reconnect interval — no reconnect should happen
+    jest.advanceTimersByTime(5000);
+
+    // If reconnect had happened, a new ws would have been created
+    expect(mockWsInstances).toHaveLength(1);
+
+    jest.useRealTimers();
   });
 
   it('should parse wrapped message (from multi-stream)', () => {

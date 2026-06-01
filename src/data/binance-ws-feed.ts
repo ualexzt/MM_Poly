@@ -28,6 +28,7 @@ export class BinanceWsFeed {
   private config: BinanceWsFeedConfig;
   private connected: boolean = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private stopped: boolean = false;
 
   constructor(config: Partial<BinanceWsFeedConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -38,6 +39,7 @@ export class BinanceWsFeed {
   }
 
   connect(): void {
+    this.stopped = false;
     const streams = this.config.symbols.map((s) => `${s}@kline_1m`).join('/');
     const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
 
@@ -91,11 +93,13 @@ export class BinanceWsFeed {
   }
 
   disconnect(): void {
+    this.stopped = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
     if (this.ws) {
+      this.ws.removeAllListeners();
       this.ws.close();
       this.ws = null;
     }
@@ -103,6 +107,7 @@ export class BinanceWsFeed {
   }
 
   private scheduleReconnect(): void {
+    if (this.stopped) return;
     this.reconnectTimer = setTimeout(() => {
       this.connect();
     }, this.config.reconnectIntervalMs);
