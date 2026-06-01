@@ -58,6 +58,54 @@ describe('buildLatencyArbSnapshot', () => {
     expect(result).toEqual({ ok: false, reason: 'stale_orderbook' });
   });
 
+  it('should reject future or invalid timestamps', () => {
+    expect(buildLatencyArbSnapshot({ yes: book({ lastUpdateMs: now + 1000 }), no: book({}) }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    })).toEqual({ ok: false, reason: 'invalid_orderbook_timestamp' });
+
+    expect(buildLatencyArbSnapshot({ yes: book({ lastUpdateMs: Number.NaN }), no: book({}) }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    })).toEqual({ ok: false, reason: 'invalid_orderbook_timestamp' });
+  });
+
+  it('should reject prices outside binary market bounds', () => {
+    const result = buildLatencyArbSnapshot({
+      yes: book({ bestBid: 1.01, bestAsk: 1.02 }),
+      no: book({}),
+    }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    });
+
+    expect(result).toEqual({ ok: false, reason: 'invalid_orderbook_price' });
+  });
+
+  it('should use coarser tick size and reject invalid tick or min order sizes', () => {
+    const ok = buildLatencyArbSnapshot({
+      yes: book({ tickSize: 0.01, minOrderSize: 5 }),
+      no: book({ tickSize: 0.001, minOrderSize: 1 }),
+    }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    });
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) throw new Error('expected ok');
+    expect(ok.execution.tickSize).toBe(0.01);
+    expect(ok.execution.minOrderSize).toBe(5);
+
+    expect(buildLatencyArbSnapshot({ yes: book({ tickSize: 0 }), no: book({}) }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    })).toEqual({ ok: false, reason: 'invalid_orderbook_price' });
+  });
+
   it('should reject wide spreads', () => {
     const result = buildLatencyArbSnapshot({
       yes: book({ bestBid: 0.40, bestAsk: 0.55, midpoint: 0.475, spread: 0.15 }),

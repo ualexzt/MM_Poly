@@ -23,27 +23,51 @@ export interface LatencyArbSnapshotConfig {
 
 export type LatencyArbSnapshotResult =
   | { ok: true; snapshot: MarketSnapshot; execution: LatencyArbExecutionSnapshot }
-  | { ok: false; reason: 'stale_orderbook' | 'spread_too_wide' | 'invalid_orderbook_price' };
+  | {
+      ok: false;
+      reason:
+        | 'stale_orderbook'
+        | 'spread_too_wide'
+        | 'invalid_orderbook_price'
+        | 'invalid_orderbook_timestamp';
+    };
+
+function isValidBinaryPrice(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1;
+}
 
 function isFinitePositive(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function ageMs(nowMs: number, lastUpdateMs: number): number | null {
+  if (!Number.isFinite(nowMs) || !Number.isFinite(lastUpdateMs)) return null;
+  const age = nowMs - lastUpdateMs;
+  return age >= 0 ? age : null;
 }
 
 export function buildLatencyArbSnapshot(
   books: LatencyArbBookPair,
   config: LatencyArbSnapshotConfig
 ): LatencyArbSnapshotResult {
-  const maxAge = Math.max(
-    config.nowMs - books.yes.lastUpdateMs,
-    config.nowMs - books.no.lastUpdateMs
-  );
+  const yesAgeMs = ageMs(config.nowMs, books.yes.lastUpdateMs);
+  const noAgeMs = ageMs(config.nowMs, books.no.lastUpdateMs);
+  if (yesAgeMs === null || noAgeMs === null) {
+    return { ok: false, reason: 'invalid_orderbook_timestamp' };
+  }
+
+  const maxAge = Math.max(yesAgeMs, noAgeMs);
   if (maxAge > config.maxMarketAgeMs) return { ok: false, reason: 'stale_orderbook' };
 
   if (
-    !isFinitePositive(books.yes.bestBid) ||
-    !isFinitePositive(books.yes.bestAsk) ||
-    !isFinitePositive(books.no.bestBid) ||
-    !isFinitePositive(books.no.bestAsk)
+    !isValidBinaryPrice(books.yes.bestBid) ||
+    !isValidBinaryPrice(books.yes.bestAsk) ||
+    !isValidBinaryPrice(books.no.bestBid) ||
+    !isValidBinaryPrice(books.no.bestAsk) ||
+    !isFinitePositive(books.yes.tickSize) ||
+    !isFinitePositive(books.no.tickSize) ||
+    !isFinitePositive(books.yes.minOrderSize) ||
+    !isFinitePositive(books.no.minOrderSize)
   ) {
     return { ok: false, reason: 'invalid_orderbook_price' };
   }
@@ -73,7 +97,7 @@ export function buildLatencyArbSnapshot(
       yesBestAsk: books.yes.bestAsk,
       noBestBid: books.no.bestBid,
       noBestAsk: books.no.bestAsk,
-      tickSize: Math.min(books.yes.tickSize, books.no.tickSize),
+      tickSize: Math.max(books.yes.tickSize, books.no.tickSize),
       minOrderSize: Math.max(books.yes.minOrderSize, books.no.minOrderSize),
     },
   };
