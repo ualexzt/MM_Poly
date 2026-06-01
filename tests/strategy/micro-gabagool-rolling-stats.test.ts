@@ -38,4 +38,14 @@ describe('RollingMarketStats', () => {
 
     expect(result.spreadChangesLast60Sec).toBe(2);
   });
+
+  it('counts a spread change whose current sample is on the 60 second boundary', () => {
+    const stats = new RollingMarketStats();
+    stats.update('m1', { timestampMs: 59_000, bestBid: 0.40, bestAsk: 0.44, bestBidSizeUsd: 20, bestAskSizeUsd: 10 });
+    stats.update('m1', { timestampMs: 61_000, bestBid: 0.40, bestAsk: 0.45, bestBidSizeUsd: 20, bestAskSizeUsd: 10 });
+
+    const result = stats.update('m1', { timestampMs: 120_000, bestBid: 0.40, bestAsk: 0.45, bestBidSizeUsd: 20, bestAskSizeUsd: 10 });
+
+    expect(result.spreadChangesLast60Sec).toBe(1);
+  });
 });

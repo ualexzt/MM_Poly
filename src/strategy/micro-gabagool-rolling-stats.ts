@@ -55,11 +55,13 @@ export class RollingMarketStats {
     const wmpDelta3Min = referenceSample ? Math.abs(wmp - referenceSample.wmp) : 0;
 
     const spreadWindowStartMs = sample.timestampMs - ONE_MINUTE_MS;
-    const spreadWindow = prunedSamples.filter((storedSample) => storedSample.timestampMs >= spreadWindowStartMs);
     let spreadChangesLast60Sec = 0;
 
-    for (let index = 1; index < spreadWindow.length; index += 1) {
-      if (Math.abs(spreadWindow[index].spread - spreadWindow[index - 1].spread) > SPREAD_EPSILON) {
+    for (let index = 1; index < prunedSamples.length; index += 1) {
+      if (
+        prunedSamples[index].timestampMs >= spreadWindowStartMs
+        && Math.abs(prunedSamples[index].spread - prunedSamples[index - 1].spread) > SPREAD_EPSILON
+      ) {
         spreadChangesLast60Sec += 1;
       }
     }
