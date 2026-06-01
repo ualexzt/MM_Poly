@@ -86,6 +86,42 @@ function getEnvFloat(key: string, defaultValue: number): number {
   return parseStrictNumber(key, val);
 }
 
+function getEnvPositiveInt(key: string, defaultValue: number): number {
+  const parsed = getEnvInt(key, defaultValue);
+  if (parsed <= 0) throw new Error(`Invalid positive integer for ${key}: ${parsed}`);
+  return parsed;
+}
+
+function getEnvNonNegativeInt(key: string, defaultValue: number): number {
+  const parsed = getEnvInt(key, defaultValue);
+  if (parsed < 0) throw new Error(`Invalid non-negative integer for ${key}: ${parsed}`);
+  return parsed;
+}
+
+function getEnvPositiveFloat(key: string, defaultValue: number): number {
+  const parsed = getEnvFloat(key, defaultValue);
+  if (parsed <= 0) throw new Error(`Invalid positive float for ${key}: ${parsed}`);
+  return parsed;
+}
+
+function getEnvNonNegativeFloat(key: string, defaultValue: number): number {
+  const parsed = getEnvFloat(key, defaultValue);
+  if (parsed < 0) throw new Error(`Invalid non-negative float for ${key}: ${parsed}`);
+  return parsed;
+}
+
+function getEnvRatio(key: string, defaultValue: number): number {
+  const parsed = getEnvFloat(key, defaultValue);
+  if (parsed <= 0 || parsed > 1) throw new Error(`Invalid ratio for ${key}: ${parsed}`);
+  return parsed;
+}
+
+function getEnvNonEmptyString(key: string, defaultValue: string): string {
+  const val = getEnv(key, defaultValue).trim();
+  if (val.length === 0) throw new Error(`Invalid non-empty string for ${key}`);
+  return val;
+}
+
 function getEnvBool(key: string, defaultValue: boolean): boolean {
   const val = process.env[key];
   if (val === undefined) return defaultValue;
@@ -166,12 +202,12 @@ export const env: EnvConfig = {
   latencyArbMaxDailyTrades: getEnvInt('LATENCY_ARB_MAX_DAILY_TRADES', 20),
   latencyArbCooldownMs: getEnvInt('LATENCY_ARB_COOLDOWN_MS', 60000),
   latencyArbMarketAsset: getEnvLatencyAsset('LATENCY_ARB_MARKET_ASSET', 'BTC'),
-  latencyArbMarketDurationMinutes: getEnvInt('LATENCY_ARB_MARKET_DURATION_MINUTES', 15),
-  latencyArbStartingBalanceUsd: getEnvFloat('LATENCY_ARB_STARTING_BALANCE_USD', 15.48),
-  latencyArbOrderBalanceFraction: getEnvFloat('LATENCY_ARB_ORDER_BALANCE_FRACTION', 0.10),
-  latencyArbMaxOrderSizeUsd: getEnvFloat('LATENCY_ARB_MAX_ORDER_SIZE_USD', 1.55),
-  latencyArbMaxSpreadCents: getEnvFloat('LATENCY_ARB_MAX_SPREAD_CENTS', 8),
-  latencyArbMaxMarketAgeMs: getEnvInt('LATENCY_ARB_MAX_MARKET_AGE_MS', 2000),
-  latencyArbSimulatedLatencyMs: getEnvInt('LATENCY_ARB_SIMULATED_LATENCY_MS', 750),
-  latencyArbLogDir: getEnv('LATENCY_ARB_LOG_DIR', 'logs'),
+  latencyArbMarketDurationMinutes: getEnvPositiveInt('LATENCY_ARB_MARKET_DURATION_MINUTES', 15),
+  latencyArbStartingBalanceUsd: getEnvPositiveFloat('LATENCY_ARB_STARTING_BALANCE_USD', 15.48),
+  latencyArbOrderBalanceFraction: getEnvRatio('LATENCY_ARB_ORDER_BALANCE_FRACTION', 0.10),
+  latencyArbMaxOrderSizeUsd: getEnvPositiveFloat('LATENCY_ARB_MAX_ORDER_SIZE_USD', 1.55),
+  latencyArbMaxSpreadCents: getEnvNonNegativeFloat('LATENCY_ARB_MAX_SPREAD_CENTS', 8),
+  latencyArbMaxMarketAgeMs: getEnvNonNegativeInt('LATENCY_ARB_MAX_MARKET_AGE_MS', 2000),
+  latencyArbSimulatedLatencyMs: getEnvNonNegativeInt('LATENCY_ARB_SIMULATED_LATENCY_MS', 750),
+  latencyArbLogDir: getEnvNonEmptyString('LATENCY_ARB_LOG_DIR', 'logs'),
 };
