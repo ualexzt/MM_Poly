@@ -20,26 +20,51 @@ interface OpenPosition extends WouldOrder {
 
 type WriteEvent = (event: Record<string, unknown>) => void;
 
+function finitePositive(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+function finiteNonNegative(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}
+
+function hasValidOrderNumbers(order: WouldOrder): boolean {
+  return finitePositive(order.makerPrice) &&
+    finitePositive(order.sizeUsd) &&
+    finitePositive(order.shares) &&
+    finiteNonNegative(order.placedAtMs);
+}
+
 export class LatencyArbPositionTracker {
   private readonly pendingOrders: WouldOrder[] = [];
+  private readonly pendingOrderIds = new Set<string>();
+  private readonly openedOrderIds = new Set<string>();
   private readonly openPositions: OpenPosition[] = [];
 
   constructor(private readonly config: LatencyArbPositionTrackerConfig, private readonly writeEvent: WriteEvent) {}
 
   addPendingOrder(order: WouldOrder): void {
+    if (!hasValidOrderNumbers(order)) return;
+    if (this.pendingOrderIds.has(order.orderId) || this.openedOrderIds.has(order.orderId)) return;
+
     this.pendingOrders.push(order);
+    this.pendingOrderIds.add(order.orderId);
   }
 
   tryOpenFromMakerCross(order: WouldOrder, execution: LatencyArbExecutionSnapshot, nowMs: number): boolean {
+    if (this.openedOrderIds.has(order.orderId)) return false;
+    if (!finiteNonNegative(this.config.simulatedLatencyMs) || !finiteNonNegative(nowMs) || !hasValidOrderNumbers(order)) {
+      return false;
+    }
     if (nowMs - order.placedAtMs < this.config.simulatedLatencyMs) return false;
 
-    const crossed = order.action === 'BUY_YES'
-      ? execution.yesBestAsk < order.makerPrice
-      : execution.noBestAsk < order.makerPrice;
-    if (!crossed) return false;
+    const bestAsk = order.action === 'BUY_YES' ? execution.yesBestAsk : execution.noBestAsk;
+    if (!finitePositive(bestAsk) || bestAsk >= order.makerPrice) return false;
 
     const position: OpenPosition = { ...order, openedAtMs: nowMs };
     this.openPositions.push(position);
+    this.openedOrderIds.add(order.orderId);
+    this.removePendingOrder(order.orderId);
     this.writeEvent({
       eventType: 'position_opened',
       timestamp: nowMs,
@@ -54,14 +79,19 @@ export class LatencyArbPositionTracker {
   }
 
   processPending(executionByCondition: Map<string, LatencyArbExecutionSnapshot>, nowMs: number): void {
-    for (let i = this.pendingOrders.length - 1; i >= 0; i--) {
-      const order = this.pendingOrders[i];
+    for (const order of [...this.pendingOrders]) {
       const execution = executionByCondition.get(order.conditionId);
       if (!execution) continue;
-      if (this.tryOpenFromMakerCross(order, execution, nowMs)) {
-        this.pendingOrders.splice(i, 1);
-      }
+      this.tryOpenFromMakerCross(order, execution, nowMs);
     }
+  }
+
+  private removePendingOrder(orderId: string): void {
+    const index = this.pendingOrders.findIndex((order) => order.orderId === orderId);
+    if (index >= 0) {
+      this.pendingOrders.splice(index, 1);
+    }
+    this.pendingOrderIds.delete(orderId);
   }
 
   markToMarket(conditionId: string, execution: LatencyArbExecutionSnapshot, nowMs: number): void {
