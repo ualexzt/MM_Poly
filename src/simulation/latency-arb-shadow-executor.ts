@@ -31,13 +31,45 @@ function finitePositive(value: number): boolean {
   return Number.isFinite(value) && value > 0;
 }
 
+function validBinaryPrice(value: number): boolean {
+  return Number.isFinite(value) && value > 0 && value <= 1;
+}
+
+function validRatio(value: number): boolean {
+  return Number.isFinite(value) && value > 0 && value <= 1;
+}
+
+function validNonNegative(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}
+
 export class LatencyArbShadowExecutor {
   private orderCounter = 0;
 
   constructor(private readonly config: ShadowExecutorConfig, private readonly writeEvent: WriteEvent) {}
 
   evaluate(input: ShadowExecutorInput): ShadowExecutorResult {
+    if (
+      !finitePositive(this.config.startingBalanceUsd) ||
+      !validRatio(this.config.orderBalanceFraction) ||
+      !finitePositive(this.config.maxOrderSizeUsd) ||
+      !finitePositive(this.config.maxPositionUsd) ||
+      !validNonNegative(this.config.minConfidence) ||
+      this.config.minConfidence > 1
+    ) return this.skip(input, 'invalid_risk_config');
+
+    if (!validNonNegative(input.currentExposureUsd)) return this.skip(input, 'invalid_current_exposure');
+
     if (input.signal.action === 'NO_ACTION') return this.skip(input, input.signal.rejectionReason ?? 'no_action');
+
+    if (
+      !Number.isFinite(input.signal.expectedValue) ||
+      !Number.isFinite(input.signal.expectedValuePct) ||
+      !Number.isFinite(input.signal.divergencePct) ||
+      !Number.isFinite(input.signal.entryPrice) ||
+      !Number.isFinite(input.signal.confidence)
+    ) return this.skip(input, 'invalid_signal');
+
     if (input.signal.confidence < this.config.minConfidence) return this.skip(input, 'confidence_too_low');
 
     const makerPrice = input.signal.action === 'BUY_YES'
@@ -47,7 +79,8 @@ export class LatencyArbShadowExecutor {
       ? input.execution.yesBestAsk
       : input.execution.noBestAsk;
 
-    if (!finitePositive(makerPrice) || !finitePositive(takerPrice)) return this.skip(input, 'invalid_execution_price');
+    if (!validBinaryPrice(makerPrice) || !validBinaryPrice(takerPrice)) return this.skip(input, 'invalid_execution_price');
+    if (!finitePositive(input.execution.minOrderSize)) return this.skip(input, 'invalid_execution_min_order_size');
 
     const targetSizeUsd = Math.min(
       this.config.startingBalanceUsd * this.config.orderBalanceFraction,
@@ -55,12 +88,15 @@ export class LatencyArbShadowExecutor {
     );
     if (!finitePositive(targetSizeUsd)) return this.skip(input, 'invalid_order_size');
 
-    if (input.currentExposureUsd + targetSizeUsd > this.config.maxPositionUsd) {
+    const projectedExposureUsd = input.currentExposureUsd + targetSizeUsd;
+    if (projectedExposureUsd > this.config.maxPositionUsd) {
       return this.skip(input, 'position_limit_exceeded');
     }
 
-    const orderId = `shadow-${++this.orderCounter}`;
     const shares = targetSizeUsd / makerPrice;
+    if (shares < input.execution.minOrderSize) return this.skip(input, 'order_below_min_size');
+
+    const orderId = `shadow-${++this.orderCounter}`;
     const makerEvPct = ((input.signal.expectedValue + (input.signal.entryPrice - makerPrice)) / makerPrice) * 100;
     const takerEvPct = ((input.signal.expectedValue + (input.signal.entryPrice - takerPrice)) / takerPrice) * 100;
 
@@ -75,6 +111,8 @@ export class LatencyArbShadowExecutor {
       slug: input.market.slug,
       question: input.market.question,
       action: input.signal.action,
+      tokenId: input.signal.action === 'BUY_YES' ? input.market.yesTokenId : input.market.noTokenId,
+      side: 'BUY',
       orderType: 'post_only_limit',
       makerPrice,
       makerEvPct,
@@ -82,6 +120,9 @@ export class LatencyArbShadowExecutor {
       takerEvPct,
       sizeUsd: targetSizeUsd,
       shares,
+      currentExposureUsd: input.currentExposureUsd,
+      projectedExposureUsd,
+      minOrderSize: input.execution.minOrderSize,
       confidence: input.signal.confidence,
       divergencePct: input.signal.divergencePct,
       expectedValuePct: input.signal.expectedValuePct,
