@@ -101,7 +101,10 @@ function estimateProbability(momentum: MomentumSignal): number {
   const volumeBonus = momentum.volumeConfirmed ? 0.05 : 0;
 
   // Add EMA trend bonus
-  const emaTrend = momentum.emaFast > momentum.emaSlow ? 0.05 : -0.05;
+  const emaAligned =
+    (momentum.direction === 'BULLISH' && momentum.emaFast > momentum.emaSlow) ||
+    (momentum.direction === 'BEARISH' && momentum.emaFast < momentum.emaSlow);
+  const emaTrend = emaAligned ? 0.05 : -0.05;
 
   // Total probability (capped at 0.85 to be conservative)
   return Math.min(0.85,

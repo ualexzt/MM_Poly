@@ -278,6 +278,39 @@ describe('analyzeDivergence (pure function)', () => {
     expect(signal.rejectionReason).toBe('ev_too_low');
   });
 
+  it('should treat bearish EMA alignment as positive for BUY_NO probability', () => {
+    const bearishAligned: MomentumSignal = {
+      direction: 'BEARISH',
+      strength: 0.5,
+      priceChangePct: -0.8,
+      volumeConfirmed: false,
+      emaFast: 49000,
+      emaSlow: 50000,
+      timestamp: FIXED_TS,
+    };
+
+    const bearishMisaligned: MomentumSignal = {
+      ...bearishAligned,
+      emaFast: 51000,
+      emaSlow: 50000,
+    };
+
+    const market: MarketSnapshot = {
+      yesPrice: 0.55,
+      noPrice: 0.49,
+      midpoint: 0.52,
+      spread: 0.06,
+      timestamp: FIXED_TS,
+    };
+
+    const aligned = analyzeDivergence(defaultConfig, bearishAligned, market, nowFn);
+    const misaligned = analyzeDivergence(defaultConfig, bearishMisaligned, market, nowFn);
+
+    expect(aligned.action).toBe('BUY_NO');
+    expect(aligned.expectedValue).toBeGreaterThan(misaligned.expectedValue);
+    expect(aligned.divergencePct).toBeGreaterThan(misaligned.divergencePct);
+  });
+
   it('should produce deterministic output with nowFn', () => {
     const momentum: MomentumSignal = {
       direction: 'BULLISH',
