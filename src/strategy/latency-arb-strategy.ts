@@ -3,7 +3,7 @@ import { MomentumEngine, MomentumSignal, MomentumConfig } from '../engines/momen
 import { analyzeDivergence, DivergenceSignal, MarketSnapshot } from '../engines/divergence-engine';
 import { LatencyArbConfig, defaultLatencyArbConfig } from './latency-arb-config';
 
-export interface LatencyArbStrategyConfig {
+export interface LatencyArbStrategyConfig extends Partial<LatencyArbConfig> {
   symbols: string[];
   minConfidence: number;
   maxPositionSizeUsd: number;
@@ -45,6 +45,7 @@ export class LatencyArbStrategy {
   start(): void {
     this.feed = new BinanceWsFeed({
       symbols: this.config.symbols,
+      wsBaseUrl: this.config.binanceWsUrl,
       onPriceUpdate: this.onPriceUpdate.bind(this),
       onError: (err) => console.error('[LatencyArb] Feed error:', err),
     });
@@ -131,6 +132,10 @@ export class LatencyArbStrategy {
 
   getTradeCount(): number {
     return this.trades.length;
+  }
+
+  getConfig(): LatencyArbConfig {
+    return { ...this.config };
   }
 
   getStats(): { totalTrades: number; todayTrades: number; lastTradeTime: number } {

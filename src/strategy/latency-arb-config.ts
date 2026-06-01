@@ -12,6 +12,7 @@ export interface LatencyArbConfig {
 
   // Binance feed config
   symbols: string[];
+  binanceWsUrl: string;
 
   // Momentum engine config
   lookbackSeconds: number;
@@ -48,6 +49,7 @@ export const defaultLatencyArbConfig: LatencyArbConfig = {
   logDir: 'logs',
 
   symbols: ['btcusdt', 'ethusdt'],
+  binanceWsUrl: 'wss://stream.binance.com:9443',
 
   lookbackSeconds: 60,
   minPriceChangePct: 0.5,

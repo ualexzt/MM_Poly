@@ -2,6 +2,7 @@ import { defaultLatencyArbConfig } from '../../src/strategy/latency-arb-config';
 
 describe('defaultLatencyArbConfig live-like shadow fields', () => {
   it('should default to BTC 15m shadow soak settings', () => {
+    expect(defaultLatencyArbConfig.binanceWsUrl).toBe('wss://stream.binance.com:9443');
     expect(defaultLatencyArbConfig.marketAsset).toBe('BTC');
     expect(defaultLatencyArbConfig.marketDurationMinutes).toBe(15);
     expect(defaultLatencyArbConfig.startingBalanceUsd).toBe(15.48);
