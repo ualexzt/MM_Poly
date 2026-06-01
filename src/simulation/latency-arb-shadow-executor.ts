@@ -1,6 +1,7 @@
 import { DivergenceSignal } from '../engines/divergence-engine';
 import { MarketState } from '../types/market';
 import { LatencyArbExecutionSnapshot } from '../strategy/latency-arb-orderbook';
+import { WouldOrder } from './latency-arb-position-tracker';
 
 export interface ShadowExecutorConfig {
   mode: 'paper' | 'shadow';
@@ -22,7 +23,7 @@ export interface ShadowExecutorInput {
 }
 
 export type ShadowExecutorResult =
-  | { ok: true; orderId: string; sizeUsd: number }
+  | { ok: true; orderId: string; sizeUsd: number; order: WouldOrder }
   | { ok: false; reason: string };
 
 type WriteEvent = (event: Record<string, unknown>) => void;
@@ -100,6 +101,16 @@ export class LatencyArbShadowExecutor {
     const makerEvPct = ((input.signal.expectedValue + (input.signal.entryPrice - makerPrice)) / makerPrice) * 100;
     const takerEvPct = ((input.signal.expectedValue + (input.signal.entryPrice - takerPrice)) / takerPrice) * 100;
 
+    const order: WouldOrder = {
+      orderId,
+      conditionId: input.market.conditionId,
+      action: input.signal.action,
+      makerPrice,
+      sizeUsd: targetSizeUsd,
+      shares,
+      placedAtMs: input.nowMs,
+    };
+
     this.writeEvent({
       eventType: 'would_place_order',
       orderId,
@@ -128,7 +139,7 @@ export class LatencyArbShadowExecutor {
       expectedValuePct: input.signal.expectedValuePct,
     });
 
-    return { ok: true, orderId, sizeUsd: targetSizeUsd };
+    return { ok: true, orderId, sizeUsd: targetSizeUsd, order };
   }
 
   private skip(input: ShadowExecutorInput, reason: string): ShadowExecutorResult {

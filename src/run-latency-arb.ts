@@ -7,10 +7,10 @@ import { BookState } from './types/book';
 import { MarketState } from './types/market';
 import { MomentumSignal } from './engines/momentum-engine';
 import { analyzeDivergence } from './engines/divergence-engine';
-import { LatencyArbPositionTracker } from './simulation/latency-arb-position-tracker';
+import { LatencyArbPositionTracker, WouldOrder } from './simulation/latency-arb-position-tracker';
 import { LatencyArbShadowExecutor } from './simulation/latency-arb-shadow-executor';
 import { LatencyArbConfig } from './strategy/latency-arb-config';
-import { buildLatencyArbSnapshot } from './strategy/latency-arb-orderbook';
+import { buildLatencyArbSnapshot, LatencyArbExecutionSnapshot } from './strategy/latency-arb-orderbook';
 import { selectLatencyArbMarkets } from './strategy/latency-arb-market-selector';
 import { LatencyArbStrategy } from './strategy/latency-arb-strategy';
 import { ConsoleLogger } from './utils/logger';
@@ -31,6 +31,8 @@ export interface RunLatencyArbCycleDeps {
   fetchBook: (conditionId: string, tokenId: string) => Promise<BookState>;
   writeEvent: (event: Record<string, unknown>) => void;
   currentExposureUsd: () => number;
+  onWouldOrder?: (order: WouldOrder) => void;
+  onExecutionSnapshot?: (conditionId: string, execution: LatencyArbExecutionSnapshot, nowMs: number) => void;
 }
 
 export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<void> {
@@ -66,6 +68,8 @@ export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<
     return;
   }
 
+  deps.onExecutionSnapshot?.(market.conditionId, snapshotResult.execution, deps.nowMs);
+
   const signal = analyzeDivergence({
     minDivergencePct: deps.config.minDivergencePct,
     minEvPct: deps.config.minEvPct,
@@ -95,13 +99,17 @@ export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<
     minConfidence: deps.config.minConfidence,
   }, deps.writeEvent);
 
-  executor.evaluate({
+  const result = executor.evaluate({
     market,
     signal,
     execution: snapshotResult.execution,
     nowMs: deps.nowMs,
     currentExposureUsd: deps.currentExposureUsd(),
   });
+
+  if (result.ok) {
+    deps.onWouldOrder?.(result.order);
+  }
 }
 
 function latencyModeFromEnv(mode: EnvConfig['mode']): 'paper' | 'shadow' {
@@ -173,6 +181,11 @@ async function main() {
       fetchBook: (conditionId, tokenId) => bookClient.fetchBook(conditionId, tokenId),
       writeEvent: (event) => writer.write(event),
       currentExposureUsd: () => positionTracker.getOpenExposureUsd(),
+      onWouldOrder: (order) => positionTracker.addPendingOrder(order),
+      onExecutionSnapshot: (conditionId, execution, nowMs) => {
+        positionTracker.processPending(new Map([[conditionId, execution]]), nowMs);
+        positionTracker.markToMarket(conditionId, execution, nowMs);
+      },
     }).catch((error) => logger.error('Latency arb cycle failed', { error: String(error) }));
   }, 5000);
 

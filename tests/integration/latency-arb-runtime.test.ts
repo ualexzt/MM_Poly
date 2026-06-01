@@ -75,6 +75,8 @@ function book(tokenId: string, bid: number, ask: number): BookState {
 describe('latency arb runtime cycle', () => {
   it('should discover BTC 15m market, analyze signal, and write would-order event', async () => {
     const events: Record<string, unknown>[] = [];
+    const wouldOrders: unknown[] = [];
+    const snapshots: unknown[] = [];
     const momentum = {
       direction: 'BULLISH' as const,
       strength: 1,
@@ -93,10 +95,15 @@ describe('latency arb runtime cycle', () => {
       fetchBook: async (_conditionId, tokenId) => tokenId === 'yes' ? book('yes', 0.44, 0.46) : book('no', 0.54, 0.56),
       writeEvent: (event) => events.push(event),
       currentExposureUsd: () => 0,
+      onWouldOrder: (order) => wouldOrders.push(order),
+      onExecutionSnapshot: (conditionId, execution, snapshotNowMs) => snapshots.push({ conditionId, execution, snapshotNowMs }),
     });
 
     expect(events.some((event) => event.eventType === 'signal')).toBe(true);
     expect(events.some((event) => event.eventType === 'would_place_order')).toBe(true);
+    expect(wouldOrders).toHaveLength(1);
+    expect(wouldOrders[0]).toMatchObject({ orderId: 'shadow-1', conditionId: 'cond-btc-15', action: 'BUY_YES' });
+    expect(snapshots).toHaveLength(1);
   });
 
   it('should write skip when no BTC 15m market is found', async () => {
