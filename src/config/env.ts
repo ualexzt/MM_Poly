@@ -33,6 +33,17 @@ export interface EnvConfig {
   smallLiveWorstTopInventoryExitPnlUsd: number | null;
   smallLiveTestsPassing: boolean;
   smallLiveBuildPassing: boolean;
+
+  // Binance config
+  binanceWsUrl: string;
+  binanceSymbols: string[];
+
+  // Latency arb config
+  latencyArbEnabled: boolean;
+  latencyArbMinConfidence: number;
+  latencyArbMaxPositionUsd: number;
+  latencyArbMaxDailyTrades: number;
+  latencyArbCooldownMs: number;
 }
 
 function getEnv(key: string, defaultValue?: string): string {
@@ -127,4 +138,15 @@ export const env: EnvConfig = {
   smallLiveWorstTopInventoryExitPnlUsd: getEnvNullableFloat('SMALL_LIVE_WORST_TOP_INVENTORY_EXIT_PNL_USD', null),
   smallLiveTestsPassing: getEnvBool('SMALL_LIVE_TESTS_PASSING', false),
   smallLiveBuildPassing: getEnvBool('SMALL_LIVE_BUILD_PASSING', false),
+
+  // Binance config
+  binanceWsUrl: getEnv('BINANCE_WS_URL', 'wss://stream.binance.com:9443'),
+  binanceSymbols: getEnvList('BINANCE_SYMBOLS', ['btcusdt', 'ethusdt']),
+
+  // Latency arb config
+  latencyArbEnabled: getEnvBool('LATENCY_ARB_ENABLED', false),
+  latencyArbMinConfidence: getEnvFloat('LATENCY_ARB_MIN_CONFIDENCE', 0.6),
+  latencyArbMaxPositionUsd: getEnvFloat('LATENCY_ARB_MAX_POSITION_USD', 50),
+  latencyArbMaxDailyTrades: getEnvInt('LATENCY_ARB_MAX_DAILY_TRADES', 20),
+  latencyArbCooldownMs: getEnvInt('LATENCY_ARB_COOLDOWN_MS', 60000),
 };

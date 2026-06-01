@@ -11,7 +11,8 @@
     "start:paper": "tsx src/run-paper.ts",
     "start:shadow": "tsx src/run-shadow.ts",
     "start:live": "tsx src/run-small-live.ts",
-    "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts"
+    "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts",
+    "start:latency-arb": "tsx src/run-latency-arb.ts"
   },
   "dependencies": {
     "@polymarket/clob-client-v2": "^1.0.6",

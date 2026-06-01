@@ -37,6 +37,17 @@ const baseEnv: EnvConfig = {
   smallLiveWorstTopInventoryExitPnlUsd: -0.1,
   smallLiveTestsPassing: true,
   smallLiveBuildPassing: true,
+
+  // Binance config
+  binanceWsUrl: 'wss://stream.binance.com:9443',
+  binanceSymbols: ['btcusdt', 'ethusdt'],
+
+  // Latency arb config
+  latencyArbEnabled: false,
+  latencyArbMinConfidence: 0.6,
+  latencyArbMaxPositionUsd: 50,
+  latencyArbMaxDailyTrades: 20,
+  latencyArbCooldownMs: 60000,
 };
 
 const logger = {
