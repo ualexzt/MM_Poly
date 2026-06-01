@@ -44,8 +44,10 @@ export class MomentumEngine {
     const cutoff = this.nowFn() - (this.config.lookbackSeconds * 1000);
     this.prices = this.prices.filter(p => p.timestamp >= cutoff);
     
-    // Update EMA
-    this.updateEma(point.price);
+    // Only update EMA if the point is within the lookback window
+    if (point.timestamp >= cutoff) {
+      this.updateEma(point.price);
+    }
   }
 
   analyze(): MomentumSignal {
@@ -55,6 +57,10 @@ export class MomentumEngine {
 
     const oldest = this.prices[0];
     const newest = this.prices[this.prices.length - 1];
+    
+    // Guard against division by zero
+    if (oldest.price === 0) return this.neutralSignal();
+    
     const priceChangePct = ((newest.price - oldest.price) / oldest.price) * 100;
     
     // Volume analysis
