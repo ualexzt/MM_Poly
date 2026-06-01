@@ -2,124 +2,164 @@
 
 ## Overview
 
-The Latency Arbitrage strategy exploits temporary mispricings between real-time crypto prices (from Binance) and Polymarket's implied probabilities in 5m/15m prediction markets.
+Latency Arbitrage compares real-time BTC price momentum from Binance with Polymarket BTC 15-minute Up/Down market prices.
 
-It streams live BTC/ETH price data from Binance via WebSocket, detects strong directional moves using EMA crossovers and volume-confirmed momentum, and calculates whether Polymarket prices have diverged from the momentum-implied fair value. When divergence exceeds configurable thresholds and confidence is sufficient, the strategy buys YES or NO outcome tokens.
+**Current production-safe status:** live-like shadow only. The runner discovers BTC 15m markets, computes would-live post-only orders, tracks hypothetical positions, and writes JSONL events for soak analysis. It **does not submit real orders**. `MODE=small_live` is explicitly blocked for latency-arb until a separate live phase is designed, reviewed, and approved.
 
 ## Architecture
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
-│  Binance WS     │────▶│  Momentum Engine  │────▶│  Divergence     │
-│  Price Feed      │     │  (EMA + volume)   │     │  Engine          │
-└─────────────────┘     └──────────────────┘     └────────┬────────┘
-                                                           │
-                                                           ▼
-                                                  ┌─────────────────┐
-                                                  │  LatencyArb     │
-                                                  │  Strategy        │
-                                                  │  (confidence,    │
-                                                  │   risk, trade)   │
-                                                  └─────────────────┘
+```text
+BinanceWsFeed
+  -> MomentumEngine
+  -> BTC 15m Gamma market selector
+  -> CLOB order book snapshot builder
+  -> analyzeDivergence
+  -> LatencyArbShadowExecutor
+  -> JsonlEventWriter
+  -> LatencyArbPositionTracker
 ```
 
 ### Components
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| **BinanceWsFeed** | `src/data/binance-ws-feed.ts` | Streams real-time BTC/ETH prices from Binance WebSocket |
-| **MomentumEngine** | `src/engines/momentum-engine.ts` | Detects directional moves using EMA crossovers and price change thresholds |
-| **DivergenceEngine** | `src/engines/divergence-engine.ts` | Pure function: compares momentum-implied probability with market prices |
-| **LatencyArbStrategy** | `src/strategy/latency-arb-strategy.ts` | Orchestrates feed, engines, risk checks, and trade recording |
-| **LatencyArbConfig** | `src/strategy/latency-arb-config.ts` | Typed defaults for all strategy parameters |
+| **BinanceWsFeed** | `src/data/binance-ws-feed.ts` | Streams BTC price updates from Binance WebSocket |
+| **MomentumEngine** | `src/engines/momentum-engine.ts` | Detects directional price moves |
+| **DivergenceEngine** | `src/engines/divergence-engine.ts` | Pure function comparing momentum-implied probability with market prices |
+| **Market selector** | `src/strategy/latency-arb-market-selector.ts` | Selects active BTC 15m Up/Down markets from Gamma |
+| **Orderbook snapshot** | `src/strategy/latency-arb-orderbook.ts` | Builds validated YES/NO execution snapshots |
+| **Shadow executor** | `src/simulation/latency-arb-shadow-executor.ts` | Records post-only would-orders; never submits live orders |
+| **Position tracker** | `src/simulation/latency-arb-position-tracker.ts` | Tracks hypothetical fills, mark-to-market, and resolution PnL |
+| **JSONL writer** | `src/accounting/jsonl-event-writer.ts` | Appends raw soak events to `logs/` |
 
 ## How It Works
 
-1. **Price Feed**: Streams real-time BTC/ETH prices from Binance via WebSocket
-2. **Momentum Detection**: The `MomentumEngine` maintains a rolling window of price points and computes:
-   - Fast EMA (5-period) and Slow EMA (20-period) crossovers
-   - Price change percentage over the lookback window (default 60s)
-   - Volume confirmation (recent volume >= 1.5x average)
-3. **Divergence Calculation**: The `DivergenceEngine` converts momentum into an implied probability and compares it to the Polymarket YES/NO price:
-   - Implied probability is derived from momentum strength, volume confirmation, and EMA trend
-   - Divergence = (implied_probability - entry_price) / entry_price × 100
-   - Expected Value = implied_probability × $1 payout - entry_price
-4. **Trade Decision**: Buys YES (if bullish) or NO (if bearish) when:
-   - Divergence >= `minDivergencePct` (default 3%)
-   - Expected value >= `minEvPct` (default 2%)
-   - Confidence >= `minConfidence` (default 0.6)
-   - Entry price within allowed range (0.20–0.70)
+1. **Price feed**: streams Binance BTC kline updates.
+2. **Momentum detection**: maintains a rolling price window and computes price change, volume confirmation, and EMA alignment.
+3. **Market discovery**: fetches Gamma markets and selects active BTC 15m Up/Down markets with YES/NO token IDs.
+4. **Order book snapshot**: fetches CLOB books for YES and NO tokens, rejecting stale, invalid, or too-wide books.
+5. **Divergence calculation**: compares momentum-implied probability with Polymarket ask prices.
+6. **Would-live order generation**: writes a post-only limit order event using maker-side price, plus taker comparison stats.
+7. **Hypothetical tracking**: pending maker orders can become hypothetical positions only after simulated latency and conservative cross-through. Positions are marked to market and resolved when outcome data is available.
+
+## Event Log
+
+Raw events are written as JSONL:
+
+```text
+logs/latency-arb-orders-YYYY-MM-DD.jsonl
+```
+
+Event types include:
+
+- `signal`
+- `skip`
+- `would_place_order`
+- `position_opened`
+- `mark_to_market`
+- `position_resolved`
+- `runtime_stats`
 
 ## Configuration
 
-### Environment Variables
-
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `LATENCY_ARB_ENABLED` | `false` | Enable/disable the latency arbitrage strategy |
-| `LATENCY_ARB_MIN_CONFIDENCE` | `0.6` | Minimum confidence score to execute a trade (0–1) |
-| `LATENCY_ARB_MAX_POSITION_USD` | `50` | Maximum position size in USD |
-| `LATENCY_ARB_MAX_DAILY_TRADES` | `20` | Maximum number of trades per day |
-| `LATENCY_ARB_COOLDOWN_MS` | `60000` | Minimum cooldown between trades in milliseconds |
-| `BINANCE_SYMBOLS` | `btcusdt,ethusdt` | Comma-separated Binance symbols to stream |
-| `MODE` | `paper` | Execution mode: `paper`, `shadow`, or `small_live` |
+| `LATENCY_ARB_ENABLED` | `false` | Enable shadow runner |
+| `MODE` | `paper` | `paper` or `shadow`; `small_live` is blocked |
+| `BINANCE_WS_URL` | `wss://stream.binance.com:9443` | Binance WS base URL |
+| `BINANCE_SYMBOLS` | `btcusdt,ethusdt` | Binance symbols; first soak uses BTC |
+| `LATENCY_ARB_MARKET_ASSET` | `BTC` | Asset selector; BTC only for first soak |
+| `LATENCY_ARB_MARKET_DURATION_MINUTES` | `15` | Market duration selector |
+| `LATENCY_ARB_STARTING_BALANCE_USD` | `15.48` | Hypothetical account balance |
+| `LATENCY_ARB_ORDER_BALANCE_FRACTION` | `0.10` | Fraction of balance per would-order |
+| `LATENCY_ARB_MAX_ORDER_SIZE_USD` | `1.55` | Per-order cap |
+| `LATENCY_ARB_MAX_POSITION_USD` | `50` | Exposure cap used by shadow executor |
+| `LATENCY_ARB_MIN_CONFIDENCE` | `0.6` | Minimum signal confidence |
+| `LATENCY_ARB_MAX_DAILY_TRADES` | `20` | Daily would-order cap, reserved for runtime gating |
+| `LATENCY_ARB_COOLDOWN_MS` | `60000` | Cooldown, reserved for runtime gating |
+| `LATENCY_ARB_MAX_SPREAD_CENTS` | `8` | Reject books wider than this |
+| `LATENCY_ARB_MAX_MARKET_AGE_MS` | `2000` | Reject stale books |
+| `LATENCY_ARB_SIMULATED_LATENCY_MS` | `750` | Conservative fill latency |
+| `LATENCY_ARB_LOG_DIR` | `logs` | JSONL output directory |
 
-### Internal Defaults (latency-arb-config.ts)
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `lookbackSeconds` | `60` | Rolling window for momentum analysis |
-| `minPriceChangePct` | `0.5` | Minimum price change (%) to trigger momentum signal |
-| `minVolumeMultiplier` | `1.5` | Recent volume must exceed average × this multiplier for confirmation |
-| `emaFastPeriod` | `5` | Fast EMA period |
-| `emaSlowPeriod` | `20` | Slow EMA period |
-| `minDivergencePct` | `3.0` | Minimum divergence (%) between implied probability and market price |
-| `minEvPct` | `2.0` | Minimum expected value (%) to consider a trade |
-| `maxEntryPrice` | `0.70` | Maximum allowed entry price (avoids buying near certainty) |
-| `minEntryPrice` | `0.20` | Minimum allowed entry price (avoids buying near zero) |
-
-## Running
+## Running a Shadow Soak
 
 ```bash
-# Paper mode (default — simulated fills only)
-npm run start:latency-arb
-
-# With custom config via environment
 LATENCY_ARB_ENABLED=true \
-LATENCY_ARB_MIN_CONFIDENCE=0.7 \
-LATENCY_ARB_MAX_DAILY_TRADES=10 \
+MODE=shadow \
+LIVE_TRADING_ENABLED=false \
+LATENCY_ARB_MARKET_ASSET=BTC \
+LATENCY_ARB_MARKET_DURATION_MINUTES=15 \
+LATENCY_ARB_STARTING_BALANCE_USD=15.48 \
+LATENCY_ARB_ORDER_BALANCE_FRACTION=0.10 \
+LATENCY_ARB_MAX_ORDER_SIZE_USD=1.55 \
 npm run start:latency-arb
-
-# In shadow mode (live data, no order placement)
-MODE=shadow LATENCY_ARB_ENABLED=true npm run start:latency-arb
 ```
 
-> **Note:** `LATENCY_ARB_ENABLED=true` must be set or the process exits immediately.
+Disabled smoke check:
 
-## Risk Management
+```bash
+LATENCY_ARB_ENABLED=false npm run start:latency-arb
+```
 
-- **Position limits**: `LATENCY_ARB_MAX_POSITION_USD` caps exposure per position
-- **Daily trade limits**: `LATENCY_ARB_MAX_DAILY_TRADES` prevents overtrading
-- **Cooldown**: `LATENCY_ARB_COOLDOWN_MS` enforces a minimum gap between trades
-- **Confidence threshold**: Only trades with confidence >= `minConfidence` are executed
-- **Entry price range**: Avoids buying tokens near 0 or 1 (0.20–0.70 range by default)
-- **Momentum confirmation**: Requires both price change and volume to confirm the move
-- **Conservative probability cap**: Implied probability is capped at 0.85 to avoid overconfidence
+Live-mode safety check:
+
+```bash
+LATENCY_ARB_ENABLED=true MODE=small_live npm run start:latency-arb
+# Expected: exits with "Latency arb live mode is disabled"
+```
+
+## Soak Metrics to Inspect
+
+After 1–2 hours, inspect the JSONL file for:
+
+- eligible markets found vs. no-market skips
+- signal count and confidence distribution
+- skip reason distribution
+- would-place order count
+- hypothetical fill count
+- mark-to-market PnL
+- resolved PnL when outcomes are available
+- maker EV vs. taker comparison EV
+
+## Risk Controls
+
+- Real orders are not submitted by latency-arb.
+- `MODE=small_live` is hard-blocked.
+- Books are rejected when stale, invalid, or too wide.
+- Order size is capped from the 15.48 USDC balance assumption.
+- Shadow executor validates finite binary prices, exposure, confidence, and minimum size.
+- Fill model is conservative: latency delay plus strict cross-through, not mere touch.
 
 ## Testing
 
 ```bash
-# Run latency arbitrage related tests
-npx jest --testPathPattern='latency|momentum|divergence'
-
-# Run all tests
-npm test
+npm test -- --runInBand
+npm run build
 ```
 
-## Future Improvements
+Focused latency-arb tests:
 
-- Multi-timeframe momentum confirmation (5m + 15m)
-- Dynamic position sizing based on confidence
-- Integration with Polymarket order book depth for better fills
-- Backtesting framework with historical Binance data
-- Spread-aware entry timing
+```bash
+npm test -- tests/data/binance-ws-feed.test.ts \
+  tests/engines/divergence-engine.test.ts \
+  tests/strategy/latency-arb-market-selector.test.ts \
+  tests/strategy/latency-arb-orderbook.test.ts \
+  tests/accounting/jsonl-event-writer.test.ts \
+  tests/simulation/latency-arb-shadow-executor.test.ts \
+  tests/simulation/latency-arb-position-tracker.test.ts \
+  tests/integration/latency-arb-runtime.test.ts \
+  --runInBand
+```
+
+## Future Live Gate
+
+A later live phase requires a separate design and review, including:
+
+- existing small-live preflight integration
+- credential and balance checks
+- open-order cleanup
+- Data API position reconciliation
+- Telegram critical alerts
+- explicit `LIVE_TRADING_ENABLED=true`
+- explicit approval after shadow soak evidence

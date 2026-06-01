@@ -65,15 +65,15 @@ npm run start:live      # Real post-only orders (requires explicit config)
 
 ### Latency Arbitrage
 
-Exploits temporary mispricings between real-time crypto prices (from Binance) and Polymarket's implied probabilities in short-duration prediction markets. Detects strong directional moves using EMA crossovers and volume-confirmed momentum.
+Live-like shadow strategy for BTC 15m Up/Down markets. It streams Binance BTC momentum, discovers Polymarket BTC 15m markets, computes would-live post-only orders, and writes JSONL events for soak analysis. It does **not** submit real orders; `MODE=small_live` is hard-blocked for this runner.
 
 ```bash
-npm run start:latency-arb
+LATENCY_ARB_ENABLED=true MODE=shadow LIVE_TRADING_ENABLED=false npm run start:latency-arb
 ```
 
-**Key config:** `LATENCY_ARB_ENABLED`, `LATENCY_ARB_MIN_CONFIDENCE`, `LATENCY_ARB_MAX_POSITION_USD`
+**Key config:** `LATENCY_ARB_ENABLED`, `LATENCY_ARB_MARKET_ASSET`, `LATENCY_ARB_MARKET_DURATION_MINUTES`, `LATENCY_ARB_MAX_ORDER_SIZE_USD`, `LATENCY_ARB_LOG_DIR`
 
-See [docs/latency-arbitrage.md](docs/latency-arbitrage.md) for full documentation.
+See [docs/latency-arbitrage.md](docs/latency-arbitrage.md) for full documentation and soak instructions.
 
 ## Project Structure
 
