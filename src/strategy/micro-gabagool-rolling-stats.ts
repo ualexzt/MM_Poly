@@ -33,7 +33,7 @@ export function computeWeightedMidPrice(input: WmpInput): number {
     return (input.bestBid + input.bestAsk) / 2;
   }
 
-  return ((input.bestBid * input.bestBidSizeUsd) + (input.bestAsk * input.bestAskSizeUsd)) / totalSizeUsd;
+  return ((input.bestBid * input.bestAskSizeUsd) + (input.bestAsk * input.bestBidSizeUsd)) / totalSizeUsd;
 }
 
 export class RollingMarketStats {

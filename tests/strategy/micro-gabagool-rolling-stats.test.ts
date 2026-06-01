@@ -2,7 +2,7 @@ import { computeWeightedMidPrice, RollingMarketStats } from '../../src/strategy/
 
 describe('computeWeightedMidPrice', () => {
   it('computes WMP from bid/ask prices and USD sizes', () => {
-    expect(computeWeightedMidPrice({ bestBid: 0.40, bestAsk: 0.44, bestBidSizeUsd: 20, bestAskSizeUsd: 10 })).toBeCloseTo(0.413333, 6);
+    expect(computeWeightedMidPrice({ bestBid: 0.40, bestAsk: 0.44, bestBidSizeUsd: 20, bestAskSizeUsd: 10 })).toBeCloseTo(0.4266666667, 6);
   });
 
   it('returns midpoint when both top sizes are zero', () => {
