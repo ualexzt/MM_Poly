@@ -31,6 +31,7 @@ export interface RunLatencyArbCycleDeps {
   fetchBook: (conditionId: string, tokenId: string) => Promise<BookState>;
   writeEvent: (event: Record<string, unknown>) => void;
   currentExposureUsd: () => number;
+  shadowExecutor?: LatencyArbShadowExecutor;
   onWouldOrder?: (order: WouldOrder) => void;
   onExecutionSnapshot?: (conditionId: string, execution: LatencyArbExecutionSnapshot, nowMs: number) => void;
 }
@@ -88,7 +89,7 @@ export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<
     rejectionReason: signal.rejectionReason,
   });
 
-  const executor = new LatencyArbShadowExecutor({
+  const executor = deps.shadowExecutor ?? new LatencyArbShadowExecutor({
     mode: deps.config.mode === 'paper' ? 'paper' : 'shadow',
     asset: deps.config.marketAsset,
     duration: '15m',
@@ -156,6 +157,16 @@ async function main() {
     { simulatedLatencyMs: env.latencyArbSimulatedLatencyMs },
     (event) => writer.write(event),
   );
+  const shadowExecutor = new LatencyArbShadowExecutor({
+    mode: latencyModeFromEnv(env.mode),
+    asset: env.latencyArbMarketAsset,
+    duration: '15m',
+    startingBalanceUsd: env.latencyArbStartingBalanceUsd,
+    orderBalanceFraction: env.latencyArbOrderBalanceFraction,
+    maxOrderSizeUsd: env.latencyArbMaxOrderSizeUsd,
+    maxPositionUsd: env.latencyArbMaxPositionUsd,
+    minConfidence: env.latencyArbMinConfidence,
+  }, (event) => writer.write(event));
 
   // Handle shutdown
   process.on('SIGINT', () => {
@@ -181,6 +192,7 @@ async function main() {
       fetchBook: (conditionId, tokenId) => bookClient.fetchBook(conditionId, tokenId),
       writeEvent: (event) => writer.write(event),
       currentExposureUsd: () => positionTracker.getOpenExposureUsd(),
+      shadowExecutor,
       onWouldOrder: (order) => positionTracker.addPendingOrder(order),
       onExecutionSnapshot: (conditionId, execution, nowMs) => {
         positionTracker.processPending(new Map([[conditionId, execution]]), nowMs);

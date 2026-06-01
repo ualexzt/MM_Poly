@@ -1,4 +1,5 @@
 import { assertLatencyArbModeAllowed, runLatencyArbCycle } from '../../src/run-latency-arb';
+import { LatencyArbShadowExecutor } from '../../src/simulation/latency-arb-shadow-executor';
 import { LatencyArbConfig } from '../../src/strategy/latency-arb-config';
 import { MarketState } from '../../src/types/market';
 import { BookState } from '../../src/types/book';
@@ -104,6 +105,47 @@ describe('latency arb runtime cycle', () => {
     expect(wouldOrders).toHaveLength(1);
     expect(wouldOrders[0]).toMatchObject({ orderId: 'shadow-1', conditionId: 'cond-btc-15', action: 'BUY_YES' });
     expect(snapshots).toHaveLength(1);
+  });
+
+  it('should keep shadow order ids unique when executor is reused across cycles', async () => {
+    const events: Record<string, unknown>[] = [];
+    const wouldOrders: unknown[] = [];
+    const shadowExecutor = new LatencyArbShadowExecutor({
+      mode: 'shadow',
+      asset: 'BTC',
+      duration: '15m',
+      startingBalanceUsd: 15.48,
+      orderBalanceFraction: 0.1,
+      maxOrderSizeUsd: 1.55,
+      maxPositionUsd: 10,
+      minConfidence: 0.6,
+    }, (event) => events.push(event));
+    const momentum = {
+      direction: 'BULLISH' as const,
+      strength: 1,
+      priceChangePct: 2,
+      volumeConfirmed: true,
+      emaFast: 51000,
+      emaSlow: 50000,
+      timestamp: now,
+    };
+    const deps = {
+      nowMs: now,
+      config: { ...config, maxPositionSizeUsd: 10 },
+      getMomentum: () => momentum,
+      fetchMarkets: async () => [market()],
+      fetchBook: async (_conditionId: string, tokenId: string) => tokenId === 'yes' ? book('yes', 0.44, 0.46) : book('no', 0.54, 0.56),
+      writeEvent: (event: Record<string, unknown>) => events.push(event),
+      currentExposureUsd: () => 0,
+      shadowExecutor,
+      onWouldOrder: (order: unknown) => wouldOrders.push(order),
+    };
+
+    await runLatencyArbCycle(deps);
+    await runLatencyArbCycle({ ...deps, nowMs: now + 1000 });
+
+    expect(wouldOrders).toHaveLength(2);
+    expect(wouldOrders.map((order) => (order as { orderId: string }).orderId)).toEqual(['shadow-1', 'shadow-2']);
   });
 
   it('should write skip when no BTC 15m market is found', async () => {
