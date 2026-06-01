@@ -11,15 +11,27 @@ export interface PriceUpdate {
 
 export interface BinanceWsFeedConfig {
   symbols: string[];
+  wsBaseUrl: string;
   onPriceUpdate: (update: PriceUpdate) => void;
   onError: (error: Error) => void;
 }
 
 const DEFAULT_CONFIG: BinanceWsFeedConfig = {
   symbols: ['btcusdt', 'ethusdt'],
+  wsBaseUrl: 'wss://stream.binance.com:9443',
   onPriceUpdate: () => {},
   onError: () => {},
 };
+
+function finiteNumberFromString(value: unknown): number | null {
+  if (typeof value !== 'string' && typeof value !== 'number') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
 
 export class BinanceWsFeed {
   private ws: WebSocket | null = null;
@@ -46,7 +58,8 @@ export class BinanceWsFeed {
     }
     this.stopped = false;
     const streams = this.config.symbols.map((s) => `${s}@kline_1m`).join('/');
-    const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
+    const baseUrl = this.config.wsBaseUrl.replace(/\/$/, '');
+    const url = `${baseUrl}/stream?streams=${streams}`;
 
     this.ws = new WebSocket(url);
 
@@ -84,17 +97,29 @@ export class BinanceWsFeed {
     try {
       if (typeof msg !== 'object' || msg === null) return null;
       const m = msg as Record<string, unknown>;
-      if (m.e !== 'kline' || !m.k) return null;
+      if (m.e !== 'kline' || typeof m.k !== 'object' || m.k === null) return null;
 
-      const k = m.k as Record<string, string>;
-      return {
-        symbol: m.s as string,
-        price: parseFloat(k.c),
-        timestamp: k.t as unknown as number,
-        volume: parseFloat(k.v),
-        high: parseFloat(k.h),
-        low: parseFloat(k.l),
-      };
+      const symbol = nonEmptyString(m.s);
+      if (!symbol) return null;
+
+      const k = m.k as Record<string, unknown>;
+      const price = finiteNumberFromString(k.c);
+      const timestamp = finiteNumberFromString(k.t);
+      const volume = finiteNumberFromString(k.v);
+      const high = finiteNumberFromString(k.h);
+      const low = finiteNumberFromString(k.l);
+
+      if (
+        price === null ||
+        timestamp === null ||
+        volume === null ||
+        high === null ||
+        low === null
+      ) {
+        return null;
+      }
+
+      return { symbol, price, timestamp, volume, high, low };
     } catch {
       return null;
     }

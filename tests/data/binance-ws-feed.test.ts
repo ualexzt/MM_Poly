@@ -88,6 +88,27 @@ describe('BinanceWsFeed', () => {
     expect(feed.parseMessage(42)).toBeNull();
   });
 
+  it('should return null for malformed kline payloads with non-finite numbers', () => {
+    const feed = new BinanceWsFeed();
+    const baseMessage = {
+      e: 'kline',
+      s: 'BTCUSDT',
+      k: {
+        t: 1700000000000,
+        c: '50100.00',
+        h: '50200.00',
+        l: '49900.00',
+        v: '100.00',
+      },
+    };
+
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, c: 'not-a-number' } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, h: undefined } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, l: null } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, k: { ...baseMessage.k, v: 'NaN' } })).toBeNull();
+    expect(feed.parseMessage({ ...baseMessage, s: '' })).toBeNull();
+  });
+
   it('should accept custom config', () => {
     const onUpdate = jest.fn();
     const onError = jest.fn();
@@ -296,6 +317,22 @@ describe('BinanceWsFeed', () => {
     const WsConstructor = wsModule.default as jest.Mock;
     expect(WsConstructor).toHaveBeenLastCalledWith(
       'wss://stream.binance.com:9443/stream?streams=ethusdt@kline_1m/solusdt@kline_1m'
+    );
+  });
+
+  it('should use configured WebSocket base URL', () => {
+    const feed = new BinanceWsFeed({
+      symbols: ['btcusdt'],
+      wsBaseUrl: 'wss://example.test:9443',
+    });
+
+    feed.connect();
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const wsModule = require('ws');
+    const WsConstructor = wsModule.default as jest.Mock;
+    expect(WsConstructor).toHaveBeenLastCalledWith(
+      'wss://example.test:9443/stream?streams=btcusdt@kline_1m'
     );
   });
 
