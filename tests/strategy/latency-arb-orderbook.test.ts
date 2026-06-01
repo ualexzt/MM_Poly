@@ -59,7 +59,7 @@ describe('buildLatencyArbSnapshot', () => {
   });
 
   it('should reject future or invalid timestamps', () => {
-    expect(buildLatencyArbSnapshot({ yes: book({ lastUpdateMs: now + 1000 }), no: book({}) }, {
+    expect(buildLatencyArbSnapshot({ yes: book({ lastUpdateMs: now + 6000 }), no: book({}) }, {
       nowMs: now,
       maxMarketAgeMs: 2000,
       maxSpreadCents: 8,
@@ -70,6 +70,15 @@ describe('buildLatencyArbSnapshot', () => {
       maxMarketAgeMs: 2000,
       maxSpreadCents: 8,
     })).toEqual({ ok: false, reason: 'invalid_orderbook_timestamp' });
+  });
+
+  it('should tolerate small clock skew (book fetched after nowMs)', () => {
+    const result = buildLatencyArbSnapshot({ yes: book({ lastUpdateMs: now + 2000 }), no: book({ lastUpdateMs: now + 2000 }) }, {
+      nowMs: now,
+      maxMarketAgeMs: 2000,
+      maxSpreadCents: 8,
+    });
+    expect(result.ok).toBe(true);
   });
 
   it('should reject prices outside binary market bounds', () => {

@@ -43,6 +43,8 @@ function isFinitePositive(value: number | null | undefined): value is number {
 function ageMs(nowMs: number, lastUpdateMs: number): number | null {
   if (!Number.isFinite(nowMs) || !Number.isFinite(lastUpdateMs)) return null;
   const age = nowMs - lastUpdateMs;
+  // Allow small positive clock skew (book fetched after nowMs captured)
+  if (age < 0 && age > -5000) return 0;
   return age >= 0 ? age : null;
 }
 
