@@ -23,7 +23,57 @@ describe('MicroGabagoolClobOrderbookClient', () => {
     const book = await client.getTopOfBook('token-1');
 
     expect(book).toEqual({ bestBid: 0.40, bestAsk: 0.44, bestBidSizeUsd: 40, bestAskSizeUsd: 22 });
-    expect(fetchFn).toHaveBeenCalledWith('https://clob.test/book?token_id=token-1');
+    expect(fetchFn).toHaveBeenCalledWith('https://clob.test/book?token_id=token-1', { signal: expect.any(AbortSignal) });
+  });
+
+  it('accepts a custom timeoutMs in config', () => {
+    const fetchFn = jest.fn().mockImplementation(() => okResponse({ bids: [], asks: [] }));
+
+    const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn, timeoutMs: 50 });
+
+    expect(client).toBeInstanceOf(MicroGabagoolClobOrderbookClient);
+  });
+
+  it('passes an AbortSignal to fetch', async () => {
+    const fetchFn = jest.fn().mockImplementation(() => okResponse({
+      bids: [{ price: '0.40', size: '100' }],
+      asks: [{ price: '0.44', size: '50' }],
+    }));
+    const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn });
+
+    await client.getTopOfBook('token-1');
+
+    expect(fetchFn).toHaveBeenCalledWith('https://clob.test/book?token_id=token-1', { signal: expect.any(AbortSignal) });
+  });
+
+  it('aborts a stalled fetch after timeoutMs', async () => {
+    jest.useFakeTimers();
+    let receivedSignal: AbortSignal | undefined;
+    const fetchFn = jest.fn((_: RequestInfo | URL, init?: RequestInit) => {
+      receivedSignal = init?.signal ?? undefined;
+
+      return new Promise<Response>((_resolve, reject) => {
+        receivedSignal?.addEventListener('abort', () => {
+          const abortError = new Error('The operation was aborted');
+          abortError.name = 'AbortError';
+          reject(abortError);
+        });
+      });
+    }) as jest.MockedFunction<typeof fetch>;
+    const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn, timeoutMs: 25 });
+
+    try {
+      const pending = client.getTopOfBook('token-1');
+
+      expect(receivedSignal).toBeDefined();
+      const rejection = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+      jest.advanceTimersByTime(25);
+
+      await rejection;
+      expect(receivedSignal?.aborted).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('trims trailing slashes and URL-encodes token ids', async () => {
@@ -35,7 +85,7 @@ describe('MicroGabagoolClobOrderbookClient', () => {
 
     await client.getTopOfBook('token 1/YES');
 
-    expect(fetchFn).toHaveBeenCalledWith('https://clob.test/book?token_id=token%201%2FYES');
+    expect(fetchFn).toHaveBeenCalledWith('https://clob.test/book?token_id=token%201%2FYES', { signal: expect.any(AbortSignal) });
   });
 
   it('sorts unordered levels conservatively', async () => {
@@ -84,6 +134,20 @@ describe('MicroGabagoolClobOrderbookClient', () => {
       bids: [{ price: 'bad', size: '100' }],
       asks: [{ price: '0.44', size: 'not-a-number' }],
     }));
+    const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn });
+
+    await expect(client.getTopOfBook('token-1')).resolves.toBeNull();
+  });
+
+  it('returns null when JSON payload is null', async () => {
+    const fetchFn = jest.fn().mockImplementation(() => okResponse(null));
+    const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn });
+
+    await expect(client.getTopOfBook('token-1')).resolves.toBeNull();
+  });
+
+  it('returns null when JSON payload is an array', async () => {
+    const fetchFn = jest.fn().mockImplementation(() => okResponse([]));
     const client = new MicroGabagoolClobOrderbookClient({ baseUrl: 'https://clob.test', fetchFn });
 
     await expect(client.getTopOfBook('token-1')).resolves.toBeNull();

@@ -8,7 +8,10 @@ export interface MicroGabagoolTopOfBook {
 export interface MicroGabagoolClobOrderbookClientConfig {
   baseUrl: string;
   fetchFn?: typeof fetch;
+  timeoutMs?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 10_000;
 
 interface BookLevel {
   price: number;
@@ -53,33 +56,49 @@ function parseLevels(levels: unknown): BookLevel[] {
 export class MicroGabagoolClobOrderbookClient {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
+  private readonly timeoutMs: number;
 
   constructor(config: MicroGabagoolClobOrderbookClientConfig) {
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.fetchFn = config.fetchFn ?? fetch;
+    this.timeoutMs = config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async getTopOfBook(tokenId: string): Promise<MicroGabagoolTopOfBook | null> {
-    const response = await this.fetchFn(`${this.baseUrl}/book?token_id=${encodeURIComponent(tokenId)}`);
-    if (!response.ok) {
-      throw new Error(`CLOB API error: ${response.status}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const response = await this.fetchFn(`${this.baseUrl}/book?token_id=${encodeURIComponent(tokenId)}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`CLOB API error: ${response.status}`);
+      }
+
+      const payload = await response.json();
+      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+        return null;
+      }
+
+      const bookPayload = payload as { bids?: unknown; asks?: unknown };
+      const bids = parseLevels(bookPayload.bids).sort((a, b) => b.price - a.price);
+      const asks = parseLevels(bookPayload.asks).sort((a, b) => a.price - b.price);
+
+      const bestBid = bids[0];
+      const bestAsk = asks[0];
+      if (!bestBid || !bestAsk) {
+        return null;
+      }
+
+      return {
+        bestBid: bestBid.price,
+        bestAsk: bestAsk.price,
+        bestBidSizeUsd: bestBid.sizeUsd,
+        bestAskSizeUsd: bestAsk.sizeUsd,
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const payload = await response.json() as { bids?: unknown; asks?: unknown };
-    const bids = parseLevels(payload.bids).sort((a, b) => b.price - a.price);
-    const asks = parseLevels(payload.asks).sort((a, b) => a.price - b.price);
-
-    const bestBid = bids[0];
-    const bestAsk = asks[0];
-    if (!bestBid || !bestAsk) {
-      return null;
-    }
-
-    return {
-      bestBid: bestBid.price,
-      bestAsk: bestAsk.price,
-      bestBidSizeUsd: bestBid.sizeUsd,
-      bestAskSizeUsd: bestAsk.sizeUsd,
-    };
   }
 }
