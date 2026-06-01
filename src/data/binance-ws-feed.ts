@@ -11,14 +11,12 @@ export interface PriceUpdate {
 
 export interface BinanceWsFeedConfig {
   symbols: string[];
-  reconnectIntervalMs: number;
   onPriceUpdate: (update: PriceUpdate) => void;
   onError: (error: Error) => void;
 }
 
 const DEFAULT_CONFIG: BinanceWsFeedConfig = {
   symbols: ['btcusdt', 'ethusdt'],
-  reconnectIntervalMs: 5000,
   onPriceUpdate: () => {},
   onError: () => {},
 };
@@ -29,6 +27,10 @@ export class BinanceWsFeed {
   private connected: boolean = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private stopped: boolean = false;
+  private reconnectAttempt: number = 0;
+
+  private readonly BASE_RECONNECT_DELAY_MS = 1_000;
+  private readonly MAX_RECONNECT_DELAY_MS = 60_000;
 
   constructor(config: Partial<BinanceWsFeedConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -39,6 +41,9 @@ export class BinanceWsFeed {
   }
 
   connect(): void {
+    if (this.ws) {
+      this.disconnect();
+    }
     this.stopped = false;
     const streams = this.config.symbols.map((s) => `${s}@kline_1m`).join('/');
     const url = `wss://stream.binance.com:9443/stream?streams=${streams}`;
@@ -47,6 +52,7 @@ export class BinanceWsFeed {
 
     this.ws.on('open', () => {
       this.connected = true;
+      this.reconnectAttempt = 0;
       console.log('[BinanceWsFeed] Connected');
     });
 
@@ -54,7 +60,7 @@ export class BinanceWsFeed {
       try {
         const message = JSON.parse(data.toString());
         const payload = message.data || message;
-        const update = this.parseMessage(JSON.stringify(payload));
+        const update = this.parseMessage(payload);
         if (update) {
           this.config.onPriceUpdate(update);
         }
@@ -74,18 +80,20 @@ export class BinanceWsFeed {
     });
   }
 
-  parseMessage(data: string): PriceUpdate | null {
+  parseMessage(msg: unknown): PriceUpdate | null {
     try {
-      const msg = JSON.parse(data);
-      if (msg.e !== 'kline' || !msg.k) return null;
+      if (typeof msg !== 'object' || msg === null) return null;
+      const m = msg as Record<string, unknown>;
+      if (m.e !== 'kline' || !m.k) return null;
 
+      const k = m.k as Record<string, string>;
       return {
-        symbol: msg.s,
-        price: parseFloat(msg.k.c),
-        timestamp: msg.k.t,
-        volume: parseFloat(msg.k.v),
-        high: parseFloat(msg.k.h),
-        low: parseFloat(msg.k.l),
+        symbol: m.s as string,
+        price: parseFloat(k.c),
+        timestamp: k.t as unknown as number,
+        volume: parseFloat(k.v),
+        high: parseFloat(k.h),
+        low: parseFloat(k.l),
       };
     } catch {
       return null;
@@ -108,8 +116,15 @@ export class BinanceWsFeed {
 
   private scheduleReconnect(): void {
     if (this.stopped) return;
+
+    const delay = Math.min(
+      this.BASE_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempt) + Math.random() * 1000,
+      this.MAX_RECONNECT_DELAY_MS
+    );
+    this.reconnectAttempt++;
+    console.log(`[BinanceWsFeed] Reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt})...`);
     this.reconnectTimer = setTimeout(() => {
       this.connect();
-    }, this.config.reconnectIntervalMs);
+    }, delay);
   }
 }
