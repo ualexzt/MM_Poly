@@ -33,16 +33,18 @@ function isDurationMarket(market: MarketState, durationMinutes: number): boolean
   return durationPatterns.some((pattern) => text.includes(pattern));
 }
 
-function endTimeMs(market: MarketState): number {
-  if (!market.endDate) return Number.POSITIVE_INFINITY;
+function endTimeMs(market: MarketState): number | null {
+  if (!market.endDate) return null;
   const parsed = Date.parse(market.endDate);
-  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function selectLatencyArbMarkets(
   markets: MarketState[],
   config: LatencyArbMarketSelectionConfig
 ): MarketState[] {
+  if (config.maxMarkets <= 0) return [];
+
   return markets
     .filter((market) => market.active === true)
     .filter((market) => market.closed === false)
@@ -51,7 +53,10 @@ export function selectLatencyArbMarkets(
     .filter((market) => isBtcMarket(market))
     .filter((market) => isUpDownMarket(market))
     .filter((market) => isDurationMarket(market, config.durationMinutes))
-    .filter((market) => endTimeMs(market) > config.nowMs)
-    .sort((a, b) => endTimeMs(a) - endTimeMs(b))
+    .filter((market) => {
+      const end = endTimeMs(market);
+      return end !== null && end > config.nowMs;
+    })
+    .sort((a, b) => (endTimeMs(a) ?? Number.POSITIVE_INFINITY) - (endTimeMs(b) ?? Number.POSITIVE_INFINITY))
     .slice(0, config.maxMarkets);
 }

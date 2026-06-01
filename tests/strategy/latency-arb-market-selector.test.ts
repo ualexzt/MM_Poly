@@ -67,4 +67,33 @@ describe('selectLatencyArbMarkets', () => {
 
     expect(selected.map((m) => m.conditionId)).toEqual(['future']);
   });
+
+  it('should return no markets when maxMarkets is zero or negative', () => {
+    const markets = [market({ conditionId: 'eligible-1' }), market({ conditionId: 'eligible-2' })];
+
+    expect(selectLatencyArbMarkets(markets, { ...config, maxMarkets: 0 })).toEqual([]);
+    expect(selectLatencyArbMarkets(markets, { ...config, maxMarkets: -1 })).toEqual([]);
+  });
+
+  it('should ignore markets with missing or invalid endDate', () => {
+    const markets = [
+      market({ conditionId: 'missing-end', endDate: undefined }),
+      market({ conditionId: 'invalid-end', endDate: 'not-a-date' }),
+      market({ conditionId: 'valid', endDate: new Date(now + 60_000).toISOString() }),
+    ];
+
+    const selected = selectLatencyArbMarkets(markets, config);
+
+    expect(selected.map((m) => m.conditionId)).toEqual(['valid']);
+  });
+
+  it('should match real Gamma-shaped BTC updown 15m slugs', () => {
+    const markets = [
+      market({ conditionId: 'gamma-btc', slug: 'btc-updown-15m-1766162100', question: 'BTC Up or Down - 15m' }),
+    ];
+
+    const selected = selectLatencyArbMarkets(markets, config);
+
+    expect(selected.map((m) => m.conditionId)).toEqual(['gamma-btc']);
+  });
 });
