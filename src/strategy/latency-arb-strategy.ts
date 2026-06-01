@@ -1,5 +1,6 @@
-import { PriceUpdate } from '../data/binance-ws-feed';
+import { BinanceWsFeed, PriceUpdate } from '../data/binance-ws-feed';
 import { MomentumEngine, MomentumSignal, MomentumConfig } from '../engines/momentum-engine';
+import { analyzeDivergence, DivergenceSignal, MarketSnapshot } from '../engines/divergence-engine';
 import { LatencyArbConfig, defaultLatencyArbConfig } from './latency-arb-config';
 
 export interface LatencyArbStrategyConfig {
@@ -21,6 +22,7 @@ export interface TradeRecord {
 export class LatencyArbStrategy {
   private config: LatencyArbConfig;
   private momentumEngines: Map<string, MomentumEngine> = new Map();
+  private feed: BinanceWsFeed | null = null;
   private trades: TradeRecord[] = [];
   private lastTradeTime: number = 0;
 
@@ -40,6 +42,25 @@ export class LatencyArbStrategy {
     }
   }
 
+  start(): void {
+    this.feed = new BinanceWsFeed({
+      symbols: this.config.symbols,
+      onPriceUpdate: this.onPriceUpdate.bind(this),
+      onError: (err) => console.error('[LatencyArb] Feed error:', err),
+    });
+
+    this.feed.connect();
+    console.log('[LatencyArb] Strategy started');
+  }
+
+  stop(): void {
+    if (this.feed) {
+      this.feed.disconnect();
+      this.feed = null;
+    }
+    console.log('[LatencyArb] Strategy stopped');
+  }
+
   onPriceUpdate(update: PriceUpdate): void {
     const engine = this.momentumEngines.get(update.symbol.toLowerCase());
     if (!engine) return;
@@ -55,6 +76,33 @@ export class LatencyArbStrategy {
     const engine = this.momentumEngines.get(symbol.toLowerCase());
     if (!engine) return null;
     return engine.analyze();
+  }
+
+  analyzeMarket(symbol: string, market: MarketSnapshot): DivergenceSignal | null {
+    const momentum = this.getMomentum(symbol);
+    if (!momentum) return null;
+
+    const signal = analyzeDivergence(
+      {
+        minDivergencePct: this.config.minDivergencePct,
+        minEvPct: this.config.minEvPct,
+        maxEntryPrice: this.config.maxEntryPrice,
+        minEntryPrice: this.config.minEntryPrice,
+      },
+      momentum,
+      market,
+    );
+
+    // Apply confidence threshold
+    if (signal.action !== 'NO_ACTION' && signal.confidence < this.config.minConfidence) {
+      return {
+        ...signal,
+        action: 'NO_ACTION',
+        rejectionReason: 'confidence_too_low',
+      };
+    }
+
+    return signal;
   }
 
   canTrade(): boolean {

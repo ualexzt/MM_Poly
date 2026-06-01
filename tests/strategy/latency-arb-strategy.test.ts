@@ -1,6 +1,7 @@
 import { LatencyArbStrategy, LatencyArbStrategyConfig } from '../../src/strategy/latency-arb-strategy';
 import { PriceUpdate } from '../../src/data/binance-ws-feed';
 import { MomentumSignal } from '../../src/engines/momentum-engine';
+import { MarketSnapshot } from '../../src/engines/divergence-engine';
 
 describe('LatencyArbStrategy', () => {
   const defaultConfig: LatencyArbStrategyConfig = {
@@ -40,26 +41,38 @@ describe('LatencyArbStrategy', () => {
     expect(momentum?.direction).toBe('BULLISH');
   });
 
-  it('should not trade when confidence is below threshold', () => {
+  it('should reject trade when confidence is below threshold', () => {
     const strategy = new LatencyArbStrategy({
       ...defaultConfig,
       minConfidence: 0.9, // Very high threshold
     });
 
-    // Weak momentum
+    // Build strong price momentum but with flat volume (not volume-confirmed)
+    // This gives high strength + divergence but low confidence due to no volume confirmation
     const now = Date.now();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 20; i++) {
       strategy.onPriceUpdate({
         symbol: 'BTCUSDT',
-        price: 50000 + i * 10,
-        timestamp: now - (5 - i) * 5000,
-        volume: 100,
-        high: 50000 + i * 10 + 5,
-        low: 50000 + i * 10 - 5,
+        price: 50000 + i * 200, // Strong uptrend
+        timestamp: now - (20 - i) * 3000,
+        volume: 100, // Flat volume — won't pass volume confirmation
+        high: 50000 + i * 200 + 100,
+        low: 50000 + i * 200 - 100,
       });
     }
 
-    expect(strategy.getTradeCount()).toBe(0);
+    const market: MarketSnapshot = {
+      yesPrice: 0.45,
+      noPrice: 0.55,
+      midpoint: 0.45,
+      spread: 0.10,
+      timestamp: now,
+    };
+
+    const signal = strategy.analyzeMarket('BTCUSDT', market);
+    expect(signal).toBeDefined();
+    expect(signal?.action).toBe('NO_ACTION');
+    expect(signal?.rejectionReason).toBe('confidence_too_low');
   });
 
   it('should respect daily trade limit', () => {
