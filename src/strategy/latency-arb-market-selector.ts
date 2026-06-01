@@ -7,56 +7,53 @@ export interface LatencyArbMarketSelectionConfig {
   nowMs: number;
 }
 
-function textOf(market: MarketState): string {
-  return `${market.slug ?? ''} ${market.question ?? ''}`.toLowerCase();
+export interface LatencyArbMarketFetcher {
+  fetchMarketBySlug(slug: string): Promise<MarketState | null>;
 }
 
-function isBtcMarket(market: MarketState): boolean {
-  const text = textOf(market);
-  return text.includes('btc') || text.includes('bitcoin');
+function computeSlotStartMs(nowMs: number, durationMinutes: number): number {
+  const intervalMs = durationMinutes * 60 * 1000;
+  return Math.floor(nowMs / intervalMs) * intervalMs;
 }
 
-function isUpDownMarket(market: MarketState): boolean {
-  const text = textOf(market);
-  return (text.includes('up') && text.includes('down')) || text.includes('higher or lower');
+export function buildCrypto15mSlug(asset: string, slotStartMs: number): string {
+  const slotUnix = Math.floor(slotStartMs / 1000);
+  return `${asset.toLowerCase()}-updown-15m-${slotUnix}`;
 }
 
-function isDurationMarket(market: MarketState, durationMinutes: number): boolean {
-  const text = textOf(market);
-  const durationPatterns = [
-    `${durationMinutes}m`,
-    `${durationMinutes} m`,
-    `${durationMinutes}-minute`,
-    `${durationMinutes} minute`,
-    `${durationMinutes}min`,
-  ];
-  return durationPatterns.some((pattern) => text.includes(pattern));
+function isValidActiveMarket(market: MarketState, nowMs: number): boolean {
+  return (
+    market.active === true &&
+    market.closed === false &&
+    market.enableOrderBook === true &&
+    market.yesTokenId.length > 0 &&
+    market.noTokenId.length > 0
+  );
 }
 
-function endTimeMs(market: MarketState): number | null {
-  if (!market.endDate) return null;
-  const parsed = Date.parse(market.endDate);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-export function selectLatencyArbMarkets(
-  markets: MarketState[],
-  config: LatencyArbMarketSelectionConfig
-): MarketState[] {
+export async function selectLatencyArbMarkets(
+  config: LatencyArbMarketSelectionConfig,
+  fetcher: LatencyArbMarketFetcher
+): Promise<MarketState[]> {
   if (config.maxMarkets <= 0) return [];
 
-  return markets
-    .filter((market) => market.active === true)
-    .filter((market) => market.closed === false)
-    .filter((market) => market.enableOrderBook === true)
-    .filter((market) => market.yesTokenId.length > 0 && market.noTokenId.length > 0)
-    .filter((market) => isBtcMarket(market))
-    .filter((market) => isUpDownMarket(market))
-    .filter((market) => isDurationMarket(market, config.durationMinutes))
-    .filter((market) => {
-      const end = endTimeMs(market);
-      return end !== null && end > config.nowMs;
-    })
-    .sort((a, b) => (endTimeMs(a) ?? Number.POSITIVE_INFINITY) - (endTimeMs(b) ?? Number.POSITIVE_INFINITY))
-    .slice(0, config.maxMarkets);
+  const intervalMs = config.durationMinutes * 60 * 1000;
+  const slotStartMs = computeSlotStartMs(config.nowMs, config.durationMinutes);
+
+  // Try current slot and next 2 slots
+  for (let i = 0; i < 3; i++) {
+    const candidateSlotMs = slotStartMs + i * intervalMs;
+    const slug = buildCrypto15mSlug(config.asset, candidateSlotMs);
+
+    try {
+      const market = await fetcher.fetchMarketBySlug(slug);
+      if (market && isValidActiveMarket(market, config.nowMs)) {
+        return [market];
+      }
+    } catch {
+      // Slug not found or API error — try next slot
+    }
+  }
+
+  return [];
 }

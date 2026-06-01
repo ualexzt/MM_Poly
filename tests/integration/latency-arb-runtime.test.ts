@@ -1,10 +1,13 @@
 import { assertLatencyArbModeAllowed, runLatencyArbCycle } from '../../src/run-latency-arb';
 import { LatencyArbShadowExecutor } from '../../src/simulation/latency-arb-shadow-executor';
 import { LatencyArbConfig } from '../../src/strategy/latency-arb-config';
+import { LatencyArbMarketFetcher } from '../../src/strategy/latency-arb-market-selector';
 import { MarketState } from '../../src/types/market';
 import { BookState } from '../../src/types/book';
 
 const now = 1700000000000;
+const slotMs = Math.floor(now / 900000) * 900000;
+const slotUnix = Math.floor(slotMs / 1000);
 
 const config: LatencyArbConfig = {
   symbols: ['btcusdt'],
@@ -37,8 +40,8 @@ const config: LatencyArbConfig = {
 function market(): MarketState {
   return {
     conditionId: 'cond-btc-15',
-    slug: 'btc-updown-15m-1766162100',
-    question: 'BTC Up or Down - 15m',
+    slug: `btc-updown-15m-${slotUnix}`,
+    question: 'Bitcoin Up or Down - 15m',
     yesTokenId: 'yes',
     noTokenId: 'no',
     active: true,
@@ -73,6 +76,14 @@ function book(tokenId: string, bid: number, ask: number): BookState {
   };
 }
 
+function mockFetcher(m: MarketState | null): LatencyArbMarketFetcher {
+  return { fetchMarketBySlug: async () => m };
+}
+
+function noFetcher(): LatencyArbMarketFetcher {
+  return { fetchMarketBySlug: async () => null };
+}
+
 describe('latency arb runtime cycle', () => {
   it('should discover BTC 15m market, analyze signal, and write would-order event', async () => {
     const events: Record<string, unknown>[] = [];
@@ -92,7 +103,7 @@ describe('latency arb runtime cycle', () => {
       nowMs: now,
       config,
       getMomentum: () => momentum,
-      fetchMarkets: async () => [market()],
+      marketFetcher: mockFetcher(market()),
       fetchBook: async (_conditionId, tokenId) => tokenId === 'yes' ? book('yes', 0.44, 0.46) : book('no', 0.54, 0.56),
       writeEvent: (event) => events.push(event),
       currentExposureUsd: () => 0,
@@ -133,7 +144,7 @@ describe('latency arb runtime cycle', () => {
       nowMs: now,
       config: { ...config, maxPositionSizeUsd: 10 },
       getMomentum: () => momentum,
-      fetchMarkets: async () => [market()],
+      marketFetcher: mockFetcher(market()),
       fetchBook: async (_conditionId: string, tokenId: string) => tokenId === 'yes' ? book('yes', 0.44, 0.46) : book('no', 0.54, 0.56),
       writeEvent: (event: Record<string, unknown>) => events.push(event),
       currentExposureUsd: () => 0,
@@ -155,7 +166,7 @@ describe('latency arb runtime cycle', () => {
       nowMs: now,
       config,
       getMomentum: () => null,
-      fetchMarkets: async () => [],
+      marketFetcher: noFetcher(),
       fetchBook: async () => { throw new Error('should not fetch book'); },
       writeEvent: (event) => events.push(event),
       currentExposureUsd: () => 0,

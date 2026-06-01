@@ -2,7 +2,6 @@ import 'dotenv/config';
 import { env, EnvConfig } from './config/env';
 import { JsonlEventWriter } from './accounting/jsonl-event-writer';
 import { ClobApiClient } from './data/clob-orderbook-client';
-import { GammaApiScanner } from './data/gamma-market-scanner';
 import { BookState } from './types/book';
 import { MarketState } from './types/market';
 import { MomentumSignal } from './engines/momentum-engine';
@@ -11,7 +10,8 @@ import { LatencyArbPositionTracker, WouldOrder } from './simulation/latency-arb-
 import { LatencyArbShadowExecutor } from './simulation/latency-arb-shadow-executor';
 import { LatencyArbConfig } from './strategy/latency-arb-config';
 import { buildLatencyArbSnapshot, LatencyArbExecutionSnapshot } from './strategy/latency-arb-orderbook';
-import { selectLatencyArbMarkets } from './strategy/latency-arb-market-selector';
+import { LatencyArbMarketFetcher, selectLatencyArbMarkets } from './strategy/latency-arb-market-selector';
+import { GammaSlugMarketFetcher } from './strategy/gamma-slug-market-fetcher';
 import { LatencyArbStrategy } from './strategy/latency-arb-strategy';
 import { ConsoleLogger } from './utils/logger';
 
@@ -27,7 +27,7 @@ export interface RunLatencyArbCycleDeps {
   nowMs: number;
   config: LatencyArbConfig;
   getMomentum: (symbol: string) => MomentumSignal | null;
-  fetchMarkets: () => Promise<MarketState[]>;
+  marketFetcher: LatencyArbMarketFetcher;
   fetchBook: (conditionId: string, tokenId: string) => Promise<BookState>;
   writeEvent: (event: Record<string, unknown>) => void;
   currentExposureUsd: () => number;
@@ -37,12 +37,12 @@ export interface RunLatencyArbCycleDeps {
 }
 
 export async function runLatencyArbCycle(deps: RunLatencyArbCycleDeps): Promise<void> {
-  const markets = selectLatencyArbMarkets(await deps.fetchMarkets(), {
+  const markets = await selectLatencyArbMarkets({
     asset: deps.config.marketAsset,
     durationMinutes: deps.config.marketDurationMinutes,
     maxMarkets: 1,
     nowMs: deps.nowMs,
-  });
+  }, deps.marketFetcher);
 
   if (markets.length === 0) {
     deps.writeEvent({ eventType: 'skip', timestamp: deps.nowMs, reason: 'no_eligible_btc_15m_market' });
@@ -151,7 +151,7 @@ async function main() {
     filePrefix: 'latency-arb-orders',
     onError: (error) => logger.error('Failed to write latency arb event', { error: error.message }),
   });
-  const scanner = new GammaApiScanner();
+  const marketFetcher = new GammaSlugMarketFetcher();
   const bookClient = new ClobApiClient();
   const positionTracker = new LatencyArbPositionTracker(
     { simulatedLatencyMs: env.latencyArbSimulatedLatencyMs },
@@ -188,7 +188,7 @@ async function main() {
       nowMs: Date.now(),
       config: strategy.getConfig(),
       getMomentum: (symbol) => strategy.getMomentum(symbol),
-      fetchMarkets: () => scanner.fetchMarkets(),
+      marketFetcher,
       fetchBook: (conditionId, tokenId) => bookClient.fetchBook(conditionId, tokenId),
       writeEvent: (event) => writer.write(event),
       currentExposureUsd: () => positionTracker.getOpenExposureUsd(),
