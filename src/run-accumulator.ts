@@ -1,11 +1,47 @@
+import { ClobClient, Chain } from '@polymarket/clob-client-v2';
+import { createWalletClient, http } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import { polygon } from 'viem/chains';
 import { FifteenMinMarketScanner } from './data/fifteen-min-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
 import { JsonlEventWriter } from './accounting/jsonl-event-writer';
 import { loadLiveModeConfig } from './config/live-mode';
+import { applyObservedFills, normalizeClobTradesToObservedFills } from './execution/live-fill-tracker';
+import { OrderManager } from './execution/order-manager';
+import { PolymarketLiveOrderClient } from './execution/polymarket-live-order-client';
 import { runAccumulatorCycle } from './strategy/accumulator-runner';
 import { PositionTracker } from './strategy/position-tracker';
 
 const SCAN_INTERVAL_MS = 30_000;
+
+function requireEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for small_live`);
+  return value;
+}
+
+function createSmallLiveDependencies(clobBaseUrl: string): { orderManager: OrderManager; clobClient: ClobClient } {
+  const privateKey = requireEnv('PRIVATE_KEY');
+  const walletAddress = requireEnv('WALLET_ADDRESS');
+  const creds = {
+    key: requireEnv('CLOB_API_KEY'),
+    secret: requireEnv('CLOB_API_SECRET'),
+    passphrase: requireEnv('CLOB_API_PASSPHRASE'),
+  };
+
+  const account = privateKeyToAccount(privateKey as `0x${string}`);
+  const walletClient = createWalletClient({ account, chain: polygon, transport: http() });
+  const clobClient = new ClobClient({
+    host: clobBaseUrl,
+    chain: Chain.POLYGON,
+    signer: walletClient as any,
+    creds,
+    signatureType: 3,
+    funderAddress: walletAddress,
+  });
+
+  return { orderManager: new OrderManager(new PolymarketLiveOrderClient(clobClient as any)), clobClient };
+}
 
 async function fetchAllOrderbooks(client: ClobApiClient, markets: any[]): Promise<Map<string, { yes: any; no: any }>> {
   const result = new Map();
@@ -53,13 +89,11 @@ async function main(): Promise<void> {
     getOpenOrders: async () => [],
   };
 
-  if (modeConfig.canPlaceLiveOrders) {
-    throw new Error('small_live execution adapter is not wired yet');
-  }
+  const liveDependencies = modeConfig.canPlaceLiveOrders ? createSmallLiveDependencies(clobBaseUrl) : null;
+  const orderManager = liveDependencies ? liveDependencies.orderManager : paperOrderManager;
+  const seenFillIds = new Set<string>();
 
-  const orderManager = paperOrderManager;
-
-  console.log(`[accumulator] starting in ${modeConfig.mode.toUpperCase()} mode (15-min markets)`);
+  console.log(`[accumulator] starting in ${modeConfig.canPlaceLiveOrders ? 'SMALL_LIVE' : 'PAPER'} mode (15-min markets)`);
   console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
   console.log(`[accumulator] config: targetPairCost=${ACCUMULATOR_CONFIG.targetPairCost} tradeSize=${ACCUMULATOR_CONFIG.tradeSize} maxDelta=${ACCUMULATOR_CONFIG.maxUnhedgedDelta} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
   console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
@@ -72,6 +106,27 @@ async function main(): Promise<void> {
       if (markets.length === 0) {
         console.log(`[accumulator] no markets found (maybe low liquidity hours?)`);
         return;
+      }
+
+      if (liveDependencies) {
+        for (const market of markets) {
+          try {
+            const trades = await liveDependencies.clobClient.getTrades({ market: market.conditionId }, true);
+            const marketEndMs = market.endDate ? Date.parse(market.endDate) : undefined;
+            const fills = normalizeClobTradesToObservedFills(trades as any[], {
+              marketId: market.conditionId,
+              yesTokenId: market.yesTokenId,
+              noTokenId: market.noTokenId,
+              marketEndMs,
+            });
+            const applied = applyObservedFills(tracker, fills, seenFillIds);
+            for (const fill of applied) {
+              logger.write({ eventType: 'live_fill_observed', ...fill });
+            }
+          } catch (err) {
+            logger.write({ eventType: 'live_fill_error', marketId: market.conditionId, error: (err as Error).message });
+          }
+        }
       }
 
       const orderbooks = await fetchAllOrderbooks(orderbookClient, markets);
@@ -88,6 +143,7 @@ async function main(): Promise<void> {
         currentBalanceUsd: 15,
         tracker,
         getOrderbooks: () => orderbooks,
+        recordFillOnOrderPlacement: !modeConfig.canPlaceLiveOrders,
       });
       console.log(`[accumulator] cycle: ${result.decisions.length} decisions, tracker has ${tracker.getPositions().size} positions`);
     } catch (err) {
