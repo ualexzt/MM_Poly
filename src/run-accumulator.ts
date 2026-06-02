@@ -180,6 +180,7 @@ async function main(): Promise<void> {
         tracker,
         getOrderbooks: () => orderbooks,
         recordFillOnOrderPlacement: !modeConfig.canPlaceLiveOrders,
+        postOnlyOrders: process.env.POST_ONLY_ORDERS === 'true',
       });
       console.log(`[accumulator] cycle: ${result.decisions.length} decisions, tracker has ${tracker.getPositions().size} positions`);
     } catch (err) {

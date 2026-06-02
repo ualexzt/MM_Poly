@@ -122,6 +122,7 @@ describe('runAccumulatorCycle', () => {
       side: 'BUY',
       price: 0.42,
       size: 2,
+      postOnly: false,
     });
     expect(input.tracker.getPosition('cid-1')).toMatchObject({
       yesQty: 2,
@@ -175,6 +176,7 @@ describe('runAccumulatorCycle', () => {
       side: 'BUY',
       price: 0.25,
       size: 4,
+      postOnly: false,
     });
   });
 

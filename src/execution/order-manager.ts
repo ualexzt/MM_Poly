@@ -1,5 +1,5 @@
 export interface ClobOrderClient {
-  createOrder(params: { tokenId: string; side: string; price: number; size: number }): Promise<OrderResult>;
+  createOrder(params: { tokenId: string; side: string; price: number; size: number; postOnly?: boolean }): Promise<OrderResult>;
   cancelOrder(orderId: string): Promise<void>;
   getOpenOrders(): Promise<OpenOrder[]>;
 }
@@ -21,6 +21,7 @@ export interface PlaceOrderParams {
   side: 'BUY' | 'SELL';
   price: number;
   size: number;
+  postOnly?: boolean;
 }
 
 export class OrderManager {

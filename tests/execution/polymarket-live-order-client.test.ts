@@ -9,7 +9,7 @@ describe('PolymarketLiveOrderClient', () => {
     };
     const client = new PolymarketLiveOrderClient(clob as any);
 
-    const result = await client.createOrder({ tokenId: 'token-1', side: 'BUY', price: 0.42, size: 1 });
+    const result = await client.createOrder({ tokenId: 'token-1', side: 'BUY', price: 0.42, size: 1, postOnly: true });
 
     expect(result).toEqual({ orderId: 'order-1', status: 'LIVE' });
     expect(clob.createAndPostOrder).toHaveBeenCalledWith(expect.objectContaining({

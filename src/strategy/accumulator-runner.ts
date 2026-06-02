@@ -14,7 +14,7 @@ export interface OrderbookClient {
 }
 
 export interface OrderManager {
-  placeLimitOrder(params: { tokenId: string; side: 'BUY' | 'SELL'; price: number; size: number }): Promise<{ orderId: string | null; status: string; error?: string }>;
+  placeLimitOrder(params: { tokenId: string; side: 'BUY' | 'SELL'; price: number; size: number; postOnly?: boolean }): Promise<{ orderId: string | null; status: string; error?: string }>;
   cancelStaleOrders(lifetimeMs: number): Promise<string[]>;
   getOpenOrders(): Promise<{ orderId: string; tokenId: string; createdAt: number }[]>;
 }
@@ -36,6 +36,7 @@ export interface AccumulatorCycleInput {
   getOrderbooks(): Map<string, { yes: BookState; no: BookState }>;
   nowMs?: () => number;
   recordFillOnOrderPlacement?: boolean;
+  postOnlyOrders?: boolean;
 }
 
 export interface CycleResult {
@@ -49,6 +50,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
     currentBalanceUsd, tracker, getOrderbooks,
   } = input;
   const recordFillOnOrderPlacement = input.recordFillOnOrderPlacement ?? true;
+  const postOnlyOrders = input.postOnlyOrders ?? false;
 
   const decisions: Array<AccumulatorDecision | EqualizerDecision> = [];
 
@@ -101,7 +103,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         const eqDecision = decideEqualizer(pos, books.yes, books.no, equalizerConfig);
         if (eqDecision.side !== 'BALANCED') {
           const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
-          const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares });
+          const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares, postOnly: postOnlyOrders });
           if (result.status !== 'LIVE' || !result.orderId) {
             logger.write({ eventType: 'order_failed', marketId: market.conditionId, decisionType: 'equalizer_rebalance', ...eqDecision, orderStatus: result.status, error: result.error });
             continue;
@@ -122,7 +124,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       const accDecision = decideAccumulatorEntry(pos, books.yes, books.no, accumulatorConfig);
       if (accDecision.side !== 'SKIP') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
-        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares });
+        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares, postOnly: postOnlyOrders });
         if (result.status !== 'LIVE' || !result.orderId) {
           logger.write({ eventType: 'order_failed', marketId: market.conditionId, decisionType: 'accumulator_entry', ...accDecision, orderStatus: result.status, error: result.error });
           continue;

@@ -23,14 +23,15 @@ export interface MinimalPolymarketClobClient {
 export class PolymarketLiveOrderClient implements ClobOrderClient {
   constructor(private clob: MinimalPolymarketClobClient) {}
 
-  async createOrder(params: { tokenId: string; side: string; price: number; size: number }): Promise<OrderResult> {
+  async createOrder(params: { tokenId: string; side: string; price: number; size: number; postOnly?: boolean }): Promise<OrderResult> {
     try {
+      const postOnly = params.postOnly ?? false;
       const order = await this.clob.createAndPostOrder({
         tokenID: params.tokenId,
         side: params.side,
         price: params.price,
         size: params.size,
-      }, undefined, 'GTC', true);
+      }, undefined, 'GTC', postOnly as any);
       if (order.success === false) {
         return { orderId: null, status: 'ERROR', error: order.errorMsg || order.status || 'CLOB rejected order' };
       }
