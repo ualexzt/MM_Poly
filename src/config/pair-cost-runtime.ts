@@ -1,3 +1,4 @@
+import { PairCostAnalyticsConfig } from '../analytics/pair-cost-analytics';
 import {
   DEFAULT_PAIR_COST_STRATEGY_CONFIG,
   PairCostStrategyConfig,
@@ -8,6 +9,7 @@ export interface PairCostRuntimeConfig {
   tradingEnabled: boolean;
   maxMarkets: number;
   scanIntervalMs: number;
+  analytics: PairCostAnalyticsConfig;
 }
 
 function boolEnv(env: NodeJS.ProcessEnv, name: string, fallback: boolean): boolean {
@@ -30,6 +32,16 @@ function nullableNumberEnv(env: NodeJS.ProcessEnv, name: string, fallback: numbe
   const value = Number(raw);
   if (!Number.isFinite(value)) return fallback;
   return value;
+}
+
+function numberListEnv(env: NodeJS.ProcessEnv, name: string, fallback: number[]): number[] {
+  const raw = env[name];
+  if (raw === undefined || raw === '') return fallback;
+  const values = raw
+    .split(',')
+    .map(part => Number(part.trim()))
+    .filter(value => Number.isFinite(value) && value > 0);
+  return values.length > 0 ? values : fallback;
 }
 
 export function loadPairCostRuntimeConfig(env: NodeJS.ProcessEnv): PairCostRuntimeConfig {
@@ -66,5 +78,11 @@ export function loadPairCostRuntimeConfig(env: NodeJS.ProcessEnv): PairCostRunti
     tradingEnabled: boolEnv(env, 'PAIR_COST_TRADING_ENABLED', false),
     maxMarkets: Math.max(1, Math.floor(numberEnv(env, 'PAIR_COST_MAX_MARKETS', 20))),
     scanIntervalMs: Math.max(1000, Math.floor(numberEnv(env, 'PAIR_COST_SCAN_INTERVAL_MS', 30_000))),
+    analytics: {
+      enabled: boolEnv(env, 'PAIR_COST_ANALYTICS_ENABLED', true),
+      sampleUsd: numberListEnv(env, 'PAIR_COST_ANALYTICS_SAMPLE_USD', [0.5, 1, 2, 3, 5]),
+      maxPairCost: numberEnv(env, 'PAIR_COST_ANALYTICS_MAX_PAIR_COST', numberEnv(env, 'PAIR_COST_MAX_PAIR_COST', DEFAULT_PAIR_COST_STRATEGY_CONFIG.maxPairCost)),
+      minEdgePerPair: numberEnv(env, 'PAIR_COST_ANALYTICS_MIN_EDGE_PER_PAIR', numberEnv(env, 'PAIR_COST_MIN_EDGE_PER_PAIR', DEFAULT_PAIR_COST_STRATEGY_CONFIG.minEdgePerPair)),
+    },
   };
 }

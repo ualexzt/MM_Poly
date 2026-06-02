@@ -1,3 +1,4 @@
+import { buildPairCostAnalyticsEvents, PairCostAnalyticsConfig } from '../analytics/pair-cost-analytics';
 import { BookState } from '../types/book';
 import { MarketState } from '../types/market';
 import { decidePairCostStrategyTick } from '../engines/pair-cost-strategy';
@@ -35,6 +36,7 @@ export interface FetchPairOptions {
 export interface PairCostHedgeCycleConfig {
   strategy: PairCostStrategyConfig;
   tradingEnabled: boolean;
+  analytics: PairCostAnalyticsConfig;
   now?: Date;
   maxMarkets?: number;
 }
@@ -133,6 +135,16 @@ export async function runPairCostHedgeCycle(input: RunPairCostHedgeCycleInput): 
     for (const market of eligibleMarkets) {
       const books = orderbooks.get(market.conditionId);
       if (!books) continue;
+
+      for (const event of buildPairCostAnalyticsEvents({
+        market,
+        yesBook: books.yes,
+        noBook: books.no,
+        config: input.config.analytics,
+        now,
+      })) {
+        input.logger.write(event);
+      }
 
       const lots = await input.lotStore.getLots(market.conditionId);
       const activeOrder = await input.activeOrderStore?.getActiveOrder(market.conditionId) ?? null;

@@ -125,6 +125,12 @@ describe('runPairCostHedgeCycle', () => {
         },
         tradingEnabled: false,
         now: new Date('2026-01-01T00:00:00.000Z'),
+        analytics: {
+          enabled: true,
+          sampleUsd: [5],
+          maxPairCost: 0.985,
+          minEdgePerPair: 0.015,
+        },
       },
     });
 
@@ -136,6 +142,20 @@ describe('runPairCostHedgeCycle', () => {
       marketsEligible: 1,
       booksFetched: 1,
       fetchErrors: 0,
+    }));
+    expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pair_cost_executable_snapshot',
+      marketId: 'cid-1',
+      sampleUsd: 5,
+      requestedQty: 5,
+      pairCost: 0.73,
+      opportunity: true,
+    }));
+    expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'pair_cost_opportunity_detected',
+      marketId: 'cid-1',
+      sampleUsd: 5,
+      pairCost: 0.73,
     }));
     expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'pair_cost_decision',
@@ -167,6 +187,12 @@ describe('runPairCostHedgeCycle', () => {
         strategy: { ...DEFAULT_PAIR_COST_STRATEGY_CONFIG, enabled: true },
         tradingEnabled: false,
         now: new Date('2026-01-01T00:00:00.000Z'),
+        analytics: {
+          enabled: false,
+          sampleUsd: [5],
+          maxPairCost: 0.985,
+          minEdgePerPair: 0.015,
+        },
       },
     });
 
@@ -187,6 +213,12 @@ describe('runPairCostHedgeCycle', () => {
         strategy: DEFAULT_PAIR_COST_STRATEGY_CONFIG,
         tradingEnabled: false,
         now: new Date('2026-01-01T00:00:00.000Z'),
+        analytics: {
+          enabled: false,
+          sampleUsd: [5],
+          maxPairCost: 0.985,
+          minEdgePerPair: 0.015,
+        },
       },
     });
 

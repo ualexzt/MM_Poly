@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   console.log(`[pair-cost] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
   console.log(`[pair-cost] enabled=${runtimeConfig.strategy.enabled} tradingEnabled=${runtimeConfig.tradingEnabled} probeEnabled=${runtimeConfig.strategy.probeEnabled} allowProbeMode=${runtimeConfig.strategy.allowProbeMode}`);
   console.log(`[pair-cost] maxMarkets=${runtimeConfig.maxMarkets} maxPairCost=${runtimeConfig.strategy.maxPairCost} minEdge=${runtimeConfig.strategy.minEdgePerPair}`);
+  console.log(`[pair-cost] analyticsEnabled=${runtimeConfig.analytics.enabled} sampleUsd=${runtimeConfig.analytics.sampleUsd.join(',')}`);
   console.log(`[pair-cost] scan interval: ${runtimeConfig.scanIntervalMs / 1000}s`);
 
   const runCycle = async () => {
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
       config: {
         strategy: runtimeConfig.strategy,
         tradingEnabled: runtimeConfig.tradingEnabled,
+        analytics: runtimeConfig.analytics,
         maxMarkets: runtimeConfig.maxMarkets,
       },
     });

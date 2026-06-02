@@ -9,6 +9,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts",
+    "summarize:pair-cost": "tsx src/scripts/summarize-pair-cost-analytics.ts",
     "start:pair-cost": "tsx src/run-pair-cost.ts"
   },
   "dependencies": {

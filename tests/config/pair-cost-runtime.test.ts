@@ -11,6 +11,8 @@ describe('loadPairCostRuntimeConfig', () => {
     expect(config.strategy.allowProbeMode).toBe(false);
     expect(config.tradingEnabled).toBe(false);
     expect(config.maxMarkets).toBe(20);
+    expect(config.analytics.enabled).toBe(true);
+    expect(config.analytics.sampleUsd).toEqual([0.5, 1, 2, 3, 5]);
   });
 
   it('parses pair-cost env values while keeping trading separately gated', () => {
@@ -25,6 +27,8 @@ describe('loadPairCostRuntimeConfig', () => {
       PAIR_COST_MAX_UNPAIRED_EXPOSURE_USD: '1.5',
       PAIR_COST_ORDERBOOK_STALE_MS: '2500',
       PAIR_COST_NO_NEW_PAIR_LAST_SECONDS: '90',
+      PAIR_COST_ANALYTICS_ENABLED: 'true',
+      PAIR_COST_ANALYTICS_SAMPLE_USD: '1,2.5,5',
     });
 
     expect(config.strategy.enabled).toBe(true);
@@ -37,6 +41,7 @@ describe('loadPairCostRuntimeConfig', () => {
     expect(config.strategy.maxUnpairedExposureUsd).toBe(1.5);
     expect(config.strategy.orderbookStaleMs).toBe(2500);
     expect(config.strategy.noNewPairLastSeconds).toBe(90);
+    expect(config.analytics.sampleUsd).toEqual([1, 2.5, 5]);
   });
 
   it('requires explicit probe flags for probe mode', () => {
