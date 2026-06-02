@@ -6,7 +6,7 @@ export interface MinimalPolymarketClobClient {
     options: undefined,
     orderType: 'GTC',
     postOnly: true,
-  ): Promise<{ id?: string; orderId?: string; orderID?: string }>;
+  ): Promise<{ id?: string; orderId?: string; orderID?: string; success?: boolean; errorMsg?: string; status?: string }>;
   cancelOrder(payload: { orderID: string }): Promise<void>;
   getOpenOrders(): Promise<Array<{
     id?: string;
@@ -31,7 +31,16 @@ export class PolymarketLiveOrderClient implements ClobOrderClient {
         price: params.price,
         size: params.size,
       }, undefined, 'GTC', true);
-      return { orderId: order.id ?? order.orderId ?? order.orderID ?? null, status: 'LIVE' };
+      if (order.success === false) {
+        return { orderId: null, status: 'ERROR', error: order.errorMsg || order.status || 'CLOB rejected order' };
+      }
+
+      const orderId = order.id ?? order.orderId ?? order.orderID ?? null;
+      if (!orderId) {
+        return { orderId: null, status: 'ERROR', error: `CLOB response missing order id: ${JSON.stringify(order)}` };
+      }
+
+      return { orderId, status: 'LIVE' };
     } catch (err) {
       return { orderId: null, status: 'ERROR', error: (err as Error).message };
     }

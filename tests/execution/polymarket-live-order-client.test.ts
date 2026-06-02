@@ -20,6 +20,21 @@ describe('PolymarketLiveOrderClient', () => {
     }), undefined, 'GTC', true);
   });
 
+  it('normalizes rejected CLOB order responses', async () => {
+    const clob = {
+      createAndPostOrder: jest.fn().mockResolvedValue({ success: false, errorMsg: 'post-only would cross' }),
+      cancelOrder: jest.fn(),
+      getOpenOrders: jest.fn(),
+    };
+    const client = new PolymarketLiveOrderClient(clob as any);
+
+    const result = await client.createOrder({ tokenId: 'token-1', side: 'BUY', price: 0.42, size: 1 });
+
+    expect(result.status).toBe('ERROR');
+    expect(result.orderId).toBeNull();
+    expect(result.error).toContain('post-only would cross');
+  });
+
   it('normalizes create order errors', async () => {
     const clob = {
       createAndPostOrder: jest.fn().mockRejectedValue(new Error('bad order')),

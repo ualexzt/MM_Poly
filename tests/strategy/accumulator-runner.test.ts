@@ -134,6 +134,22 @@ describe('runAccumulatorCycle', () => {
     }));
   });
 
+  it('logs order_failed and records no decision when execution fails', async () => {
+    const { input } = makeHarness();
+    input.recordFillOnOrderPlacement = false;
+    input.orderManager.placeLimitOrder.mockResolvedValue({ orderId: null, status: 'ERROR', error: 'post-only would cross' });
+
+    const result = await runAccumulatorCycle(input);
+
+    expect(result.decisions).toHaveLength(0);
+    expect(input.tracker.getPosition('cid-1')).toBeNull();
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'order_failed',
+      orderStatus: 'ERROR',
+      error: 'post-only would cross',
+    }));
+  });
+
   it('does not record fill on order placement when configured for live execution', async () => {
     const { input } = makeHarness();
     input.recordFillOnOrderPlacement = false;
