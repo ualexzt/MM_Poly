@@ -54,8 +54,9 @@ const SAFE_PAPER_LATE_FILL_PROBABILITY = 0;
 function parsePositiveInteger(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
-  return Math.floor(parsed);
+  if (!Number.isFinite(parsed)) return fallback;
+  const floored = Math.floor(parsed);
+  return floored >= 1 ? floored : fallback;
 }
 
 function defaultJsonlAppend(path: string, line: string): void {

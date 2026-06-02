@@ -1,5 +1,5 @@
 import { MicroGabagoolClobOrderbookClient, MicroGabagoolTopOfBook } from '../data/micro-gabagool-clob-orderbook-client';
-import { MarketCandidate } from '../run-micro-gabagool';
+import type { MarketCandidate } from '../run-micro-gabagool';
 import { RollingMarketStats } from './micro-gabagool-rolling-stats';
 
 export interface GammaMicroGabagoolScannerConfig {
@@ -90,21 +90,20 @@ export class GammaMicroGabagoolScanner {
   async scan(): Promise<MarketCandidate[]> {
     const abortController = new AbortController();
     const timeout = setTimeout(() => abortController.abort(), this.timeoutMs);
-    let response: Response;
+    let payload: unknown;
 
     try {
-      response = await this.fetchFn(
+      const response = await this.fetchFn(
         `${this.gammaBaseUrl}/markets?active=true&closed=false&limit=${this.maxMarketsPerScan}`,
         { signal: abortController.signal },
       );
+      if (!response.ok) {
+        throw new Error(`Gamma API error: ${response.status}`);
+      }
+      payload = await response.json();
     } finally {
       clearTimeout(timeout);
     }
-    if (!response.ok) {
-      throw new Error(`Gamma API error: ${response.status}`);
-    }
-
-    const payload = await response.json();
     if (!Array.isArray(payload)) {
       throw new Error('Gamma API: unexpected response');
     }

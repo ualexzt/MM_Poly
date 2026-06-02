@@ -206,6 +206,16 @@ describe('micro gabagool integration', () => {
     expect(orderbookClient.baseUrl).toBe('https://clob.test');
   });
 
+  it('should fall back for fractional gabagool interval and scan limit below one', () => {
+    const runtime = createGabagoolRuntimeFromEnv({
+      GABAGOOL_SCAN_INTERVAL_MS: '0.5',
+      GABAGOOL_MAX_MARKETS_PER_SCAN: '0.5',
+    });
+
+    expect(runtime.intervalMs).toBe(30000);
+    expect((runtime.scanner as unknown as { maxMarketsPerScan: number }).maxMarketsPerScan).toBe(100);
+  });
+
   it('should write JSONL events with injected append function', () => {
     const appended: Array<{ path: string; line: string }> = [];
     const writer = createJsonlEventWriter('logs/test.jsonl', (path, line) => {

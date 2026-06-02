@@ -56,7 +56,7 @@ describe('GammaMicroGabagoolScanner', () => {
       }],
     });
 
-    await expect(scanner.scan()).resolves.toEqual([{ 
+    await expect(scanner.scan()).resolves.toEqual([{
       conditionId: 'condition-1',
       tokenId: 'yes-token-1',
       bestBid: 0.4,
@@ -115,6 +115,53 @@ describe('GammaMicroGabagoolScanner', () => {
 
       expect(observedSignal?.aborted).toBe(true);
       await rejection;
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('aborts stalled Gamma JSON body after timeoutMs', async () => {
+    jest.useFakeTimers();
+
+    try {
+      let observedSignal: AbortSignal | undefined;
+      let resolveJson: ((value: unknown[]) => void) | undefined;
+      const fetchFn = jest.fn((_url: RequestInfo | URL, init?: RequestInit) => {
+        observedSignal = init?.signal ?? undefined;
+        const response = {
+          ok: true,
+          status: 200,
+          json: () => new Promise<unknown[]>((resolve, reject) => {
+            resolveJson = resolve;
+            observedSignal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'));
+            }, { once: true });
+          }),
+        } as Response;
+        return Promise.resolve(response);
+      });
+      const scanner = new GammaMicroGabagoolScanner({
+        gammaBaseUrl: 'https://gamma.test',
+        maxMarketsPerScan: 5,
+        fetchFn,
+        nowMs: () => Date.parse('2026-06-01T12:00:00.000Z'),
+        timeoutMs: 50,
+      }, { getTopOfBook: jest.fn() });
+
+      const scanPromise = scanner.scan();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      jest.advanceTimersByTime(50);
+      const aborted = observedSignal?.aborted;
+      if (!aborted) {
+        resolveJson?.([]);
+        await scanPromise;
+      } else {
+        await expect(scanPromise).rejects.toMatchObject({ name: 'AbortError' });
+      }
+
+      expect(aborted).toBe(true);
     } finally {
       jest.useRealTimers();
     }
