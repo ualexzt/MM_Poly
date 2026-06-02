@@ -32,4 +32,13 @@ describe('loadLiveModeConfig', () => {
     expect(cfg.accumulator.tradeSize).toBe(1);
     expect(cfg.equalizer.tradeSize).toBe(1);
   });
+
+  it('keeps paper limits unchanged for business-logic soak', () => {
+    const cfg = loadLiveModeConfig({ TRADING_MODE: 'paper' });
+
+    expect(cfg.accumulator.targetPairCost).toBe(0.98);
+    expect(cfg.accumulator.tradeSize).toBe(2);
+    expect(cfg.equalizer.maxPairCost).toBe(0.99);
+    expect(cfg.risk.maxExposureUsd).toBe(12);
+  });
 });

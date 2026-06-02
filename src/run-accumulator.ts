@@ -1,35 +1,11 @@
 import { FifteenMinMarketScanner } from './data/fifteen-min-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
 import { JsonlEventWriter } from './accounting/jsonl-event-writer';
-import { AccumulatorConfig } from './engines/accumulator';
-import { EqualizerConfig } from './engines/equalizer';
-import { RiskConfig } from './risk/pair-cost-risk';
+import { loadLiveModeConfig } from './config/live-mode';
 import { runAccumulatorCycle } from './strategy/accumulator-runner';
 import { PositionTracker } from './strategy/position-tracker';
 
 const SCAN_INTERVAL_MS = 30_000;
-
-const ACCUMULATOR_CONFIG: AccumulatorConfig = {
-  targetPairCost: 0.98,
-  tradeSize: 2,
-  maxUnhedgedDelta: 4,
-  minLiquidityMultiplier: 3,
-  maxExposurePerMarketUsd: 5,
-};
-
-const EQUALIZER_CONFIG: EqualizerConfig = {
-  imbalanceThreshold: 1,
-  tradeSize: 2,
-  maxPairCost: 0.99,
-};
-
-const RISK_CONFIG: RiskConfig = {
-  maxExposureUsd: 12,
-  maxExposurePerMarketUsd: 5,
-  maxDrawdownPct: 0.20,
-  maxOpenOrders: 4,
-  startingBalanceUsd: 15,
-};
 
 async function fetchAllOrderbooks(client: ClobApiClient, markets: any[]): Promise<Map<string, { yes: any; no: any }>> {
   const result = new Map();
@@ -57,13 +33,18 @@ async function main(): Promise<void> {
   const clobBaseUrl = process.env.CLOB_API_BASE_URL || 'https://clob.polymarket.com';
   const logDir = process.env.PAIR_COST_LOG_DIR || 'logs';
 
+  const modeConfig = loadLiveModeConfig(process.env);
+  const ACCUMULATOR_CONFIG = modeConfig.accumulator;
+  const EQUALIZER_CONFIG = modeConfig.equalizer;
+  const RISK_CONFIG = modeConfig.risk;
+
   const marketScanner = new FifteenMinMarketScanner({ gammaBaseUrl });
   const orderbookClient = new ClobApiClient(clobBaseUrl);
   const logger = new JsonlEventWriter({ logDir, filePrefix: 'accumulator' });
   const tracker = new PositionTracker();
 
   // Paper mode: no real orders
-  const orderManager = {
+  const paperOrderManager = {
     placeLimitOrder: async (params: any) => {
       console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=${params.size.toFixed(2)} shares`);
       return { orderId: `paper-${Date.now()}`, status: 'LIVE' as const };
@@ -72,7 +53,13 @@ async function main(): Promise<void> {
     getOpenOrders: async () => [],
   };
 
-  console.log(`[accumulator] starting in PAPER mode (15-min markets)`);
+  if (modeConfig.canPlaceLiveOrders) {
+    throw new Error('small_live execution adapter is not wired yet');
+  }
+
+  const orderManager = paperOrderManager;
+
+  console.log(`[accumulator] starting in ${modeConfig.mode.toUpperCase()} mode (15-min markets)`);
   console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
   console.log(`[accumulator] config: targetPairCost=${ACCUMULATOR_CONFIG.targetPairCost} tradeSize=${ACCUMULATOR_CONFIG.tradeSize} maxDelta=${ACCUMULATOR_CONFIG.maxUnhedgedDelta} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
   console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
