@@ -1,4 +1,4 @@
-import { GammaApiScanner } from './data/gamma-market-scanner';
+import { FifteenMinMarketScanner } from './data/fifteen-min-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
 import { JsonlEventWriter } from './accounting/jsonl-event-writer';
 import { AccumulatorConfig } from './engines/accumulator';
@@ -34,7 +34,7 @@ async function fetchAllOrderbooks(client: ClobApiClient, markets: any[]): Promis
   const result = new Map();
   const fetches: Promise<void>[] = [];
 
-  for (const market of markets.slice(0, 20)) {
+  for (const market of markets) {
     if (!market.yesTokenId || !market.noTokenId) continue;
 
     fetches.push(
@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   const clobBaseUrl = process.env.CLOB_API_BASE_URL || 'https://clob.polymarket.com';
   const logDir = process.env.PAIR_COST_LOG_DIR || 'logs';
 
-  const marketScanner = new GammaApiScanner(gammaBaseUrl);
+  const marketScanner = new FifteenMinMarketScanner({ gammaBaseUrl });
   const orderbookClient = new ClobApiClient(clobBaseUrl);
   const logger = new JsonlEventWriter({ logDir, filePrefix: 'accumulator' });
   const tracker = new PositionTracker();
@@ -71,7 +71,7 @@ async function main(): Promise<void> {
     getOpenOrders: async () => [],
   };
 
-  console.log(`[accumulator] starting in PAPER mode`);
+  console.log(`[accumulator] starting in PAPER mode (15-min markets)`);
   console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
   console.log(`[accumulator] config: maxPairCost=${ACCUMULATOR_CONFIG.maxPairCost} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
   console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
@@ -79,9 +79,15 @@ async function main(): Promise<void> {
   const runCycle = async () => {
     try {
       const markets = await marketScanner.fetchMarkets();
-      const activeMarkets = markets.filter(m => m.active && !m.closed && m.enableOrderBook && m.yesTokenId && m.noTokenId);
-      const orderbooks = await fetchAllOrderbooks(orderbookClient, activeMarkets);
-      console.log(`[accumulator] fetched ${orderbooks.size} orderbooks from ${activeMarkets.length} active markets`);
+      console.log(`[accumulator] found ${markets.length} 15-min markets`);
+
+      if (markets.length === 0) {
+        console.log(`[accumulator] no markets found (maybe low liquidity hours?)`);
+        return;
+      }
+
+      const orderbooks = await fetchAllOrderbooks(orderbookClient, markets);
+      console.log(`[accumulator] fetched ${orderbooks.size} orderbooks`);
 
       const result = await runAccumulatorCycle({
         marketScanner,
