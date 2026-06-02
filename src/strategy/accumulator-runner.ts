@@ -36,6 +36,7 @@ export interface AccumulatorCycleInput {
   getOrderbooks(): Map<string, { yes: BookState; no: BookState }>;
   nowMs?: () => number;
   recordFillOnOrderPlacement?: boolean;
+  minOrderNotionalUsd?: number;
 }
 
 export interface CycleResult {
@@ -49,6 +50,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
     currentBalanceUsd, tracker, getOrderbooks,
   } = input;
   const recordFillOnOrderPlacement = input.recordFillOnOrderPlacement ?? true;
+  const minOrderNotionalUsd = input.minOrderNotionalUsd ?? 0;
 
   const decisions: Array<AccumulatorDecision | EqualizerDecision> = [];
 
@@ -101,6 +103,10 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         const eqDecision = decideEqualizer(pos, books.yes, books.no, equalizerConfig);
         if (eqDecision.side !== 'BALANCED') {
           const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
+          if (eqDecision.sizeUsd < minOrderNotionalUsd) {
+            logger.write({ eventType: 'order_skipped_min_notional', marketId: market.conditionId, decisionType: 'equalizer_rebalance', ...eqDecision, minOrderNotionalUsd });
+            continue;
+          }
           const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares });
           if (result.status !== 'LIVE' || !result.orderId) {
             logger.write({ eventType: 'order_failed', marketId: market.conditionId, decisionType: 'equalizer_rebalance', ...eqDecision, orderStatus: result.status, error: result.error });
@@ -122,6 +128,10 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       const accDecision = decideAccumulatorEntry(pos, books.yes, books.no, accumulatorConfig);
       if (accDecision.side !== 'SKIP') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
+        if (accDecision.sizeUsd < minOrderNotionalUsd) {
+          logger.write({ eventType: 'order_skipped_min_notional', marketId: market.conditionId, decisionType: 'accumulator_entry', ...accDecision, minOrderNotionalUsd });
+          continue;
+        }
         const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares });
         if (result.status !== 'LIVE' || !result.orderId) {
           logger.write({ eventType: 'order_failed', marketId: market.conditionId, decisionType: 'accumulator_entry', ...accDecision, orderStatus: result.status, error: result.error });

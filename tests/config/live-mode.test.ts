@@ -29,8 +29,8 @@ describe('loadLiveModeConfig', () => {
     expect(cfg.risk.maxExposureUsd).toBe(2);
     expect(cfg.risk.maxExposurePerMarketUsd).toBe(2);
     expect(cfg.risk.maxOpenOrders).toBe(1);
-    expect(cfg.accumulator.tradeSize).toBe(1);
-    expect(cfg.equalizer.tradeSize).toBe(1);
+    expect(cfg.accumulator.tradeSize).toBe(2);
+    expect(cfg.equalizer.tradeSize).toBe(2);
   });
 
   it('keeps paper limits unchanged for business-logic soak', () => {

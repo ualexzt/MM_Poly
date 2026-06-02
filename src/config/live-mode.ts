@@ -37,7 +37,7 @@ const PAPER_RISK: RiskConfig = {
 
 const SMALL_LIVE_ACCUMULATOR: AccumulatorConfig = {
   targetPairCost: 0.98,
-  tradeSize: 1,
+  tradeSize: 2,
   maxUnhedgedDelta: 2,
   minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 2,
@@ -45,7 +45,7 @@ const SMALL_LIVE_ACCUMULATOR: AccumulatorConfig = {
 
 const SMALL_LIVE_EQUALIZER: EqualizerConfig = {
   imbalanceThreshold: 0,
-  tradeSize: 1,
+  tradeSize: 2,
   maxPairCost: 0.99,
 };
 

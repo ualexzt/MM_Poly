@@ -144,6 +144,7 @@ async function main(): Promise<void> {
         tracker,
         getOrderbooks: () => orderbooks,
         recordFillOnOrderPlacement: !modeConfig.canPlaceLiveOrders,
+        minOrderNotionalUsd: modeConfig.canPlaceLiveOrders ? 1 : 0,
       });
       console.log(`[accumulator] cycle: ${result.decisions.length} decisions, tracker has ${tracker.getPositions().size} positions`);
     } catch (err) {

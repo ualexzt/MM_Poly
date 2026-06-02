@@ -104,6 +104,7 @@ function makeHarness(options: { markets?: MarketState[]; orderbooks?: Map<string
       getOrderbooks: () => orderbooks,
       nowMs: () => 500,
       recordFillOnOrderPlacement: true,
+      minOrderNotionalUsd: 0,
     },
   };
 }
@@ -147,6 +148,29 @@ describe('runAccumulatorCycle', () => {
       eventType: 'order_failed',
       orderStatus: 'ERROR',
       error: 'post-only would cross',
+    }));
+  });
+
+  it('skips live order when decision notional is below minimum order notional', async () => {
+    const { input } = makeHarness({
+      orderbooks: new Map([
+        ['cid-1', {
+          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.13, 20)] }),
+          no: makeBook({ tokenId: 'no-1', asks: [ask(0.80, 20)] }),
+        }],
+      ]),
+    });
+    input.recordFillOnOrderPlacement = false;
+    input.minOrderNotionalUsd = 1;
+
+    const result = await runAccumulatorCycle(input);
+
+    expect(result.decisions).toHaveLength(0);
+    expect(input.orderManager.placeLimitOrder).not.toHaveBeenCalled();
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'order_skipped_min_notional',
+      sizeUsd: 0.26,
+      minOrderNotionalUsd: 1,
     }));
   });
 
