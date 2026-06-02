@@ -2,8 +2,10 @@ import { BookState } from '../types/book';
 
 export interface EqualizerConfig {
   imbalanceThreshold: number;
-  maxExposurePerMarketUsd: number;
-  limitOrderOffsetCents: number;
+  /** Order quantity in outcome shares. */
+  tradeSize: number;
+  /** Original equalizer cap: keep resulting pair cost below this (default 0.99). */
+  maxPairCost: number;
 }
 
 export interface Position {
@@ -15,8 +17,24 @@ export interface Position {
 
 export interface EqualizerDecision {
   side: 'YES' | 'NO' | 'BALANCED';
+  limitPrice: number;
+  sizeShares: number;
   sizeUsd: number;
   reason: string;
+}
+
+function balanced(reason: string): EqualizerDecision {
+  return {
+    side: 'BALANCED',
+    limitPrice: 0,
+    sizeShares: 0,
+    sizeUsd: 0,
+    reason,
+  };
+}
+
+function hasUsableAsk(book: BookState): boolean {
+  return book.bestAsk !== null && book.asks.length > 0 && book.asks[0].size > 0;
 }
 
 export function decideEqualizer(
@@ -25,41 +43,46 @@ export function decideEqualizer(
   noBook: BookState,
   config: EqualizerConfig,
 ): EqualizerDecision {
-  const balanced = (reason: string): EqualizerDecision => ({
-    side: 'BALANCED', sizeUsd: 0, reason,
-  });
-
   if (position.yesQty === 0 && position.noQty === 0) {
     return balanced('empty position');
   }
 
-  const imbalance = position.yesQty - position.noQty;
-
-  if (Math.abs(imbalance) <= config.imbalanceThreshold) {
+  const delta = position.yesQty - position.noQty;
+  if (Math.abs(delta) <= config.imbalanceThreshold) {
     return balanced('within threshold');
   }
 
-  // YES > NO → need to buy NO
-  if (imbalance > 0) {
-    if (noBook.bestAsk === null) return balanced('NO ask unavailable');
-    const unitsToBuy = Math.abs(imbalance);
-    const targetUsd = unitsToBuy * noBook.bestAsk;
-    const sizeUsd = Math.min(targetUsd, noBook.bestAskSizeUsd);
-    return {
-      side: 'NO',
-      sizeUsd,
-      reason: `rebalance: YES=${position.yesQty} > NO=${position.noQty}, need ${unitsToBuy} NO`,
-    };
+  const laggingSide: 'YES' | 'NO' = delta > 0 ? 'NO' : 'YES';
+  const targetQty = Math.abs(delta);
+  const neededBook = laggingSide === 'YES' ? yesBook : noBook;
+  const oppositeAvg = laggingSide === 'YES' ? position.avgNoPrice : position.avgYesPrice;
+
+  if (!hasUsableAsk(neededBook)) {
+    return balanced(`${laggingSide} ask unavailable`);
   }
 
-  // NO > YES → need to buy YES
-  if (yesBook.bestAsk === null) return balanced('YES ask unavailable');
-  const unitsToBuy = Math.abs(imbalance);
-  const targetUsd = unitsToBuy * yesBook.bestAsk;
-  const sizeUsd = Math.min(targetUsd, yesBook.bestAskSizeUsd);
+  const maxPrice = config.maxPairCost - oppositeAvg;
+  if (maxPrice <= 0) {
+    return balanced(`Cannot rebalance: max price ${maxPrice.toFixed(3)} is non-positive`);
+  }
+
+  const bestAsk = neededBook.bestAsk!;
+  const limitPrice = Math.min(bestAsk, maxPrice);
+  const sizeShares = Math.min(targetQty, config.tradeSize, neededBook.asks[0].size);
+
+  if (sizeShares <= 0) {
+    return balanced('no size available to rebalance');
+  }
+
+  const priceReason = bestAsk > maxPrice
+    ? `at max price ${maxPrice.toFixed(3)} to preserve pair cost`
+    : `at best ask ${bestAsk.toFixed(3)}`;
+
   return {
-    side: 'YES',
-    sizeUsd,
-    reason: `rebalance: NO=${position.noQty} > YES=${position.yesQty}, need ${unitsToBuy} YES`,
+    side: laggingSide,
+    limitPrice,
+    sizeShares,
+    sizeUsd: limitPrice * sizeShares,
+    reason: `rebalance lagging side ${laggingSide}: delta=${delta.toFixed(3)}, ${priceReason}`,
   };
 }

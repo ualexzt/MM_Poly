@@ -7,20 +7,28 @@ import {
 
 const DEFAULT_CONFIG: EqualizerConfig = {
   imbalanceThreshold: 1,
-  maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
+  tradeSize: 2,
+  maxPairCost: 0.99,
 };
 
+function ask(price: number, size: number) {
+  return { price, size, sizeUsd: price * size };
+}
+
 function makeBook(overrides: Partial<BookState> = {}): BookState {
+  const asks = overrides.asks ?? [];
+  const bestAsk = overrides.bestAsk ?? (asks.length > 0 ? asks[0].price : null);
+  const bestAskSizeUsd = overrides.bestAskSizeUsd ?? (asks.length > 0 ? asks[0].sizeUsd : 0);
+
   return {
     tokenId: 'token-1',
     conditionId: 'cid-1',
     bids: [],
-    asks: [],
+    asks,
     bestBid: null,
-    bestAsk: null,
+    bestAsk,
     bestBidSizeUsd: 0,
-    bestAskSizeUsd: 0,
+    bestAskSizeUsd,
     midpoint: null,
     spread: null,
     spreadTicks: null,
@@ -33,83 +41,83 @@ function makeBook(overrides: Partial<BookState> = {}): BookState {
   };
 }
 
-describe('decideEqualizer', () => {
-  it('returns BALANCED when position is empty', () => {
-    const pos: Position = { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.50 });
+describe('decideEqualizer - original Gabagool equalizer', () => {
+  it('returns BALANCED when position is empty or within threshold', () => {
+    const yesBook = makeBook({ asks: [ask(0.45, 20)] });
+    const noBook = makeBook({ asks: [ask(0.50, 20)] });
 
-    const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
-    expect(decision.side).toBe('BALANCED');
+    expect(decideEqualizer({ yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 }, yesBook, noBook, DEFAULT_CONFIG).side).toBe('BALANCED');
+    expect(decideEqualizer({ yesQty: 10, noQty: 9, avgYesPrice: 0.45, avgNoPrice: 0.50 }, yesBook, noBook, DEFAULT_CONFIG).side).toBe('BALANCED');
   });
 
-  it('returns BALANCED when quantities are equal', () => {
-    const pos: Position = { yesQty: 10, noQty: 10, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.50 });
+  it('buys lagging NO when YES quantity is larger', () => {
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 0.13, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.20, 20)] });
+    const noBook = makeBook({ asks: [ask(0.70, 20)] });
 
     const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
-    expect(decision.side).toBe('BALANCED');
-  });
 
-  it('returns BALANCED when imbalance is within threshold', () => {
-    const pos: Position = { yesQty: 10, noQty: 9, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.50 });
-
-    const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
-    expect(decision.side).toBe('BALANCED');
-  });
-
-  it('buys NO when YES exceeds NO by more than threshold', () => {
-    const pos: Position = { yesQty: 10, noQty: 7, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.48, bestAskSizeUsd: 100 });
-
-    const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
     expect(decision.side).toBe('NO');
-    expect(decision.sizeUsd).toBeGreaterThan(0);
-    expect(decision.reason).toContain('rebalance');
+    expect(decision.limitPrice).toBe(0.70);
+    expect(decision.sizeShares).toBe(2);
+    expect(decision.sizeUsd).toBeCloseTo(1.4);
+    expect(decision.reason).toContain('lagging side');
   });
 
-  it('buys YES when NO exceeds YES by more than threshold', () => {
-    const pos: Position = { yesQty: 5, noQty: 10, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.43, bestAskSizeUsd: 100 });
-    const noBook = makeBook({ bestAsk: 0.50 });
+  it('buys lagging YES when NO quantity is larger', () => {
+    const pos: Position = { yesQty: 1, noQty: 5, avgYesPrice: 0.50, avgNoPrice: 0.21 };
+    const yesBook = makeBook({ asks: [ask(0.60, 20)] });
+    const noBook = makeBook({ asks: [ask(0.20, 20)] });
 
     const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
+
     expect(decision.side).toBe('YES');
-    expect(decision.reason).toContain('rebalance');
+    expect(decision.limitPrice).toBe(0.60);
+    expect(decision.sizeShares).toBe(2);
   });
 
-  it('skips when bestAsk is null for needed side', () => {
-    const pos: Position = { yesQty: 10, noQty: 5, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: null });
+  it('bids at max affordable price when best ask would break pair cost', () => {
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 0.40, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.40, 20)] });
+    const noBook = makeBook({ asks: [ask(0.75, 20)] });
 
     const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('NO');
+    expect(decision.limitPrice).toBeCloseTo(0.59); // 0.99 - avg YES 0.40
+    expect(decision.reason).toContain('max price');
+  });
+
+  it('skips when max affordable price is non-positive', () => {
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 1.00, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.40, 20)] });
+    const noBook = makeBook({ asks: [ask(0.75, 20)] });
+
+    const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
+
     expect(decision.side).toBe('BALANCED');
+    expect(decision.reason).toContain('non-positive');
   });
 
-  it('sizes order to match the imbalance', () => {
-    const pos: Position = { yesQty: 10, noQty: 5, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.48, bestAskSizeUsd: 100 });
+  it('sizes to min of imbalance, trade size, and available ask size', () => {
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 0.13, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.20, 20)] });
+    const noBook = makeBook({ asks: [ask(0.70, 1.5)] });
 
     const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
-    // imbalance = 10 - 5 = 5, need 5 NO units
+
     expect(decision.side).toBe('NO');
-    expect(decision.sizeUsd).toBeLessThanOrEqual(100);
+    expect(decision.sizeShares).toBe(1.5);
   });
 
-  it('respects maxExposurePerMarketUsd', () => {
-    const pos: Position = { yesQty: 50, noQty: 10, avgYesPrice: 0.45, avgNoPrice: 0.50 };
-    // exposure = 50*0.45 + 10*0.50 = 22.5 + 5 = 27.5, already over $5
-    const yesBook = makeBook({ bestAsk: 0.45 });
-    const noBook = makeBook({ bestAsk: 0.48, bestAskSizeUsd: 100 });
+  it('skips when needed side has no ask', () => {
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 0.13, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.20, 20)] });
+    const noBook = makeBook({ asks: [] });
 
     const decision = decideEqualizer(pos, yesBook, noBook, DEFAULT_CONFIG);
-    // Should still try to rebalance but size limited
-    expect(decision.side).toBe('NO');
+
+    expect(decision.side).toBe('BALANCED');
+    expect(decision.reason).toContain('ask unavailable');
   });
 });

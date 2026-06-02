@@ -16,8 +16,8 @@ const ACCUMULATOR_CONFIG: AccumulatorConfig = {
 
 const EQUALIZER_CONFIG: EqualizerConfig = {
   imbalanceThreshold: 1,
-  maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
+  tradeSize: 2,
+  maxPairCost: 0.99,
 };
 
 const RISK_CONFIG: RiskConfig = {
@@ -132,15 +132,15 @@ describe('runAccumulatorCycle', () => {
     }));
   });
 
-  it('continues accumulating against existing position instead of skipping the market', async () => {
+  it('prioritizes equalizer when existing position is imbalanced', async () => {
     const tracker = new PositionTracker();
-    tracker.updateFill('cid-1', 'NO', 0.41, 2);
+    tracker.updateFill('cid-1', 'YES', 0.13, 4);
     const { input } = makeHarness({
       tracker,
       orderbooks: new Map([
         ['cid-1', {
-          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.54, 20)] }),
-          no: makeBook({ tokenId: 'no-1', asks: [ask(0.99, 20)] }),
+          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.10, 20)] }),
+          no: makeBook({ tokenId: 'no-1', asks: [ask(0.70, 20)] }),
         }],
       ]),
     });
@@ -148,12 +148,17 @@ describe('runAccumulatorCycle', () => {
     const result = await runAccumulatorCycle(input);
 
     expect(result.decisions).toHaveLength(1);
-    expect(result.decisions[0].side).toBe('YES');
+    expect(result.decisions[0].side).toBe('NO');
     expect(input.orderManager.placeLimitOrder).toHaveBeenCalledWith(expect.objectContaining({
-      tokenId: 'yes-1',
-      price: 0.54,
+      tokenId: 'no-1',
+      price: 0.70,
       size: 2,
     }));
+    expect(input.tracker.getPosition('cid-1')).toMatchObject({
+      yesQty: 4,
+      noQty: 2,
+      avgNoPrice: 0.70,
+    });
   });
 
   it('skips when risk check fails', async () => {

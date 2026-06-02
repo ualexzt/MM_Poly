@@ -19,8 +19,8 @@ const ACCUMULATOR_CONFIG: AccumulatorConfig = {
 
 const EQUALIZER_CONFIG: EqualizerConfig = {
   imbalanceThreshold: 1,
-  maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
+  tradeSize: 2,
+  maxPairCost: 0.99,
 };
 
 const RISK_CONFIG: RiskConfig = {

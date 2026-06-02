@@ -1,7 +1,7 @@
 import { BookState } from '../types/book';
 import { MarketState } from '../types/market';
 import { AccumulatorConfig, AccumulatorDecision, Position, decideAccumulatorEntry } from '../engines/accumulator';
-import { EqualizerConfig, decideEqualizer } from '../engines/equalizer';
+import { EqualizerConfig, EqualizerDecision, decideEqualizer } from '../engines/equalizer';
 import { RiskConfig, checkRisk } from '../risk/pair-cost-risk';
 import { PositionTracker } from './position-tracker';
 
@@ -37,7 +37,7 @@ export interface AccumulatorCycleInput {
 }
 
 export interface CycleResult {
-  decisions: AccumulatorDecision[];
+  decisions: Array<AccumulatorDecision | EqualizerDecision>;
 }
 
 export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise<CycleResult> {
@@ -47,7 +47,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
     currentBalanceUsd, tracker, getOrderbooks,
   } = input;
 
-  const decisions: AccumulatorDecision[] = [];
+  const decisions: Array<AccumulatorDecision | EqualizerDecision> = [];
 
   try {
     const allMarkets = await marketScanner.fetchMarkets();
@@ -84,6 +84,24 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
 
       if (!risk.allowed) {
         logger.write({ eventType: 'risk_blocked', marketId: market.conditionId, reason: risk.reason });
+        continue;
+      }
+
+      const imbalance = pos.yesQty - pos.noQty;
+      if (Math.abs(imbalance) > equalizerConfig.imbalanceThreshold) {
+        const eqDecision = decideEqualizer(pos, books.yes, books.no, equalizerConfig);
+        if (eqDecision.side !== 'BALANCED') {
+          const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
+          const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares });
+          if (result.status === 'LIVE' && result.orderId) {
+            tracker.updateFill(market.conditionId, eqDecision.side, eqDecision.limitPrice, eqDecision.sizeShares);
+          }
+          logger.write({ eventType: 'equalizer_rebalance', marketId: market.conditionId, ...eqDecision, orderId: result.orderId });
+          decisions.push(eqDecision);
+          break;
+        }
+
+        logger.write({ eventType: 'equalizer_skip', marketId: market.conditionId, reason: eqDecision.reason });
         continue;
       }
 
