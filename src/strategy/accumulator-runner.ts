@@ -122,7 +122,22 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
 
       // Original Gabagool accumulator: evaluate current position averages and execute one best opportunity.
       const accDecision = decideAccumulatorEntry(pos, books.yes, books.no, accumulatorConfig);
-      if (accDecision.side !== 'SKIP') {
+      if (accDecision.side === 'SELL_YES' || accDecision.side === 'SELL_NO') {
+        const tokenId = accDecision.side === 'SELL_YES' ? market.yesTokenId : market.noTokenId;
+        const result = await orderManager.placeLimitOrder({ tokenId, side: 'SELL', price: accDecision.limitPrice, size: accDecision.sizeShares, postOnly: postOnlyOrders });
+        if (result.status !== 'LIVE' || !result.orderId) {
+          logger.write({ eventType: 'order_failed', marketId: market.conditionId, decisionType: 'take_profit', ...accDecision, orderStatus: result.status, error: result.error });
+          continue;
+        }
+        if (recordFillOnOrderPlacement) {
+          tracker.reduceFill(market.conditionId, accDecision.side === 'SELL_YES' ? 'YES' : 'NO', accDecision.sizeShares);
+        }
+        logger.write({ eventType: 'take_profit', marketId: market.conditionId, ...accDecision, orderId: result.orderId });
+        decisions.push(accDecision);
+        break;
+      }
+
+      if (accDecision.side === 'YES' || accDecision.side === 'NO') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
         const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares, postOnly: postOnlyOrders });
         if (result.status !== 'LIVE' || !result.orderId) {

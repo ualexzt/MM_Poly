@@ -157,3 +157,56 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
     expect(decision.reason).toContain('min notional unreachable');
   });
 });
+
+describe('decideAccumulatorEntry - take-profit exits', () => {
+  it('sells YES when held at a profit', () => {
+    const position: Position = { yesQty: 5, noQty: 0, avgYesPrice: 0.30, avgNoPrice: 0 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.48, size: 10, sizeUsd: 4.8 }], bestBid: 0.48 });
+    const noBook = makeBook({ asks: [ask(0.55, 20)] });
+
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SELL_YES');
+    expect(decision.limitPrice).toBe(0.48);
+    expect(decision.sizeShares).toBe(2); // capped by tradeSize
+    expect(decision.reason).toContain('take-profit');
+    expect(decision.reason).toContain('0.480');
+  });
+
+  it('sells NO when held at a profit', () => {
+    const position: Position = { yesQty: 0, noQty: 5, avgYesPrice: 0, avgNoPrice: 0.25 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)] });
+    const noBook = makeBook({ asks: [ask(0.55, 20)], bids: [{ price: 0.40, size: 10, sizeUsd: 4.0 }], bestBid: 0.40 });
+
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SELL_NO');
+    expect(decision.limitPrice).toBe(0.40);
+    expect(decision.reason).toContain('take-profit');
+  });
+
+  it('prefers higher profit margin when both sides are profitable', () => {
+    const position: Position = { yesQty: 5, noQty: 5, avgYesPrice: 0.30, avgNoPrice: 0.40 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.48, size: 10, sizeUsd: 4.8 }], bestBid: 0.48 });
+    const noBook = makeBook({ asks: [ask(0.55, 20)], bids: [{ price: 0.44, size: 10, sizeUsd: 4.4 }], bestBid: 0.44 });
+
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+
+    // YES margin: 0.48-0.30=0.18, NO margin: 0.44-0.40=0.04 → pick SELL_YES
+    expect(decision.side).toBe('SELL_YES');
+    expect(decision.expectedPairCost).toBeCloseTo(0.36); // 2 shares × 0.18 profit/shr
+  });
+
+  it('skips take-profit when profit below minProfitPerShareUsd and pair cost too high', () => {
+    const config = { ...DEFAULT_CONFIG, minProfitPerShareUsd: 0.05 };
+    const position: Position = { yesQty: 5, noQty: 0, avgYesPrice: 0.30, avgNoPrice: 0 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.33, size: 10, sizeUsd: 3.3 }], bestBid: 0.33 });
+    const noBook = makeBook({ asks: [ask(0.75, 20)] });
+
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, config);
+
+    // margin 0.03 < 0.05 → no take-profit
+    // noExpectedPairCost = 0.75 + 0.30 = 1.05 > 0.98 → no BUY either → SKIP
+    expect(decision.side).toBe('SKIP');
+  });
+});

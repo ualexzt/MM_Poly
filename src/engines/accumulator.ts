@@ -12,6 +12,8 @@ export interface AccumulatorConfig {
   maxExposurePerMarketUsd: number;
   /** CLOB minimum order notional in USD. If sizeUsd falls below, sizeShares is upsized. */
   minOrderNotionalUsd?: number;
+  /** Minimum profit per share to trigger a take-profit SELL (default 0 = any profit). */
+  minProfitPerShareUsd?: number;
 }
 
 export interface Position {
@@ -22,12 +24,14 @@ export interface Position {
 }
 
 export interface AccumulatorDecision {
-  side: 'YES' | 'NO' | 'SKIP';
+  side: 'YES' | 'NO' | 'SELL_YES' | 'SELL_NO' | 'SKIP';
+  /** Price at which to execute. For SELL, this is the limit (bestBid). */
   limitPrice: number;
   /** Quantity in outcome shares. */
   sizeShares: number;
-  /** Notional cost at limitPrice. */
+  /** Notional value at limitPrice. */
   sizeUsd: number;
+  /** For BUY decisions: expected total pair cost. For SELL: realized profit. */
   expectedPairCost: number;
   reason: string;
 }
@@ -66,6 +70,18 @@ function skip(reason: string): AccumulatorDecision {
   };
 }
 
+function sell(side: 'SELL_YES' | 'SELL_NO', price: number, size: number, avgPaid: number, reason: string): AccumulatorDecision {
+  const profitPerShare = price - avgPaid;
+  return {
+    side,
+    limitPrice: price,
+    sizeShares: size,
+    sizeUsd: size * price,
+    expectedPairCost: profitPerShare * size,
+    reason,
+  };
+}
+
 export function decideAccumulatorEntry(
   position: Position,
   yesBook: BookState,
@@ -83,6 +99,50 @@ export function decideAccumulatorEntry(
 
   const askYes = yesBook.bestAsk!;
   const askNo = noBook.bestAsk!;
+  const bidYes = yesBook.bestBid;
+  const bidNo = noBook.bestBid;
+
+  // --- Take-profit exits: sell a side that's in profit ---
+  const minProfit = config.minProfitPerShareUsd ?? 0;
+  const sellOps: Array<{ side: 'SELL_YES' | 'SELL_NO'; price: number; qty: number; avgPaid: number; profitMargin: number }> = [];
+
+  if (position.yesQty > 0 && bidYes !== null && bidYes > position.avgYesPrice + minProfit) {
+    const sellQty = Math.min(position.yesQty, config.tradeSize, yesBook.bids[0]?.size ?? 0);
+    if (sellQty > 0) {
+      sellOps.push({
+        side: 'SELL_YES', price: bidYes, qty: sellQty, avgPaid: position.avgYesPrice,
+        profitMargin: bidYes - position.avgYesPrice,
+      });
+    }
+  }
+
+  if (position.noQty > 0 && bidNo !== null && bidNo > position.avgNoPrice + minProfit) {
+    const sellQty = Math.min(position.noQty, config.tradeSize, noBook.bids[0]?.size ?? 0);
+    if (sellQty > 0) {
+      sellOps.push({
+        side: 'SELL_NO', price: bidNo, qty: sellQty, avgPaid: position.avgNoPrice,
+        profitMargin: bidNo - position.avgNoPrice,
+      });
+    }
+  }
+
+  if (sellOps.length > 0) {
+    sellOps.sort((a, b) => b.profitMargin - a.profitMargin);
+    const best = sellOps[0];
+    const sideName = best.side === 'SELL_YES' ? 'YES' : 'NO';
+
+    // Min notional check
+    const sellNotional = best.qty * best.price;
+    const minNotionalSell = config.minOrderNotionalUsd ?? 0;
+    if (minNotionalSell > 0 && sellNotional < minNotionalSell) {
+      return skip(`take-profit SELL ${sideName} notional ${sellNotional.toFixed(2)} < min ${minNotionalSell}`);
+    }
+
+    return sell(
+      best.side, best.price, best.qty, best.avgPaid,
+      `take-profit: sell ${sideName} @ ${best.price.toFixed(3)} (avg ${best.avgPaid.toFixed(3)}, profit/shr ${best.profitMargin.toFixed(3)})`,
+    );
+  }
 
   // When a side hasn't been acquired yet, use current bestAsk as proxy
   // (per AGENTS.md: bestAskYES + bestAskNO < 1.00)

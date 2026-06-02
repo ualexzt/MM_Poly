@@ -59,6 +59,30 @@ export class PositionTracker {
     this.positions.set(marketId, existing);
   }
 
+  /** Reduce position without changing average price (for SELL exits). */
+  reduceFill(marketId: string, side: 'YES' | 'NO', qty: number): void {
+    const existing = this.positions.get(marketId);
+    if (!existing) return;
+
+    if (side === 'YES') {
+      existing.yesQty = Math.max(0, existing.yesQty - qty);
+      if (existing.yesQty === 0) {
+        existing.totalYesCostUsd = 0;
+        existing.avgYesPrice = 0;
+      }
+    } else {
+      existing.noQty = Math.max(0, existing.noQty - qty);
+      if (existing.noQty === 0) {
+        existing.totalNoCostUsd = 0;
+        existing.avgNoPrice = 0;
+      }
+    }
+
+    if (existing.yesQty === 0 && existing.noQty === 0) {
+      this.positions.delete(marketId);
+    }
+  }
+
   closeExpiredPositions(nowMs: number): ClosedPosition[] {
     const closed: ClosedPosition[] = [];
 
