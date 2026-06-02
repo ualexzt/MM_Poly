@@ -1,130 +1,45 @@
-# Polymarket Market Making Bot
+# Polymarket Pair-Cost Strategy Foundation
 
-A TypeScript-based Rebate-Aware Market Making Strategy for Polymarket CLOB V2 (Phase 1: Paper Core).
+This repository is being reset around one strategy idea: **YES/NO pair-cost trading**.
 
-## Overview
+The target strategy is simple:
 
-This bot implements a conservative, risk-first maker strategy that captures spread and maker-side incentives without accumulating uncontrolled toxic inventory. It intentionally avoids predicting event outcomes as its primary edge.
+```text
+Find a binary market where bestAskYES + bestAskNO is below a safe threshold.
+If the all-in pair cost is less than $1 after fees/slippage, the paired position has locked payoff.
+```
 
-**Key features:**
-- Pure engines for fair price, toxicity, inventory skew, and quote calculation (no side effects)
-- Strict risk controls: synchronous kill switches, exposure limits, stale-book guards
-- Precise PnL attribution (spread capture, rebates, adverse selection, inventory mark-to-market)
-- Decision tracing: every quote decision produces a structured diagnostic trace
-- Latency arbitrage strategy for crypto prediction markets
+## Current State
 
-## Quick Start
+This branch intentionally contains only foundation code:
 
-### Prerequisites
+- Gamma market discovery client
+- CLOB orderbook read client
+- JSONL event writer
+- Telegram notifier
+- CLOB key generation script
+- shared market/book types
+- Docker/build/test scaffolding
 
-- Node.js >= 20.0.0
-- npm
+There is **no active trading runner** in this cleanup state. Production legacy containers were stopped before this reset.
 
-### Installation
+## Commands
 
 ```bash
-git clone https://github.com/ualexzt/MM_Poly.git
-cd MM_Poly
 npm install
-```
-
-### Configuration
-
-```bash
-cp .env.example .env
-# Edit .env with your Telegram bot token, chat ID, and other settings
-```
-
-### Build
-
-```bash
 npm run build
+npm test -- --runInBand
+npm run generate:clob-key
 ```
 
-### Run Tests
+## Next Strategy Build
 
-```bash
-npm run test            # Run all tests
-npm run test:watch      # Watch mode
-npm run test:coverage   # With coverage report
-```
+The next implementation should add a new, test-first pair-cost scanner:
 
-## Strategies
+1. read active markets from Gamma;
+2. fetch YES and NO orderbooks from CLOB;
+3. compute `bestAskYES + bestAskNO`;
+4. log opportunities only when the all-in cost is below threshold;
+5. stay paper/shadow-only until live evidence justifies execution.
 
-### Market Making (Rebate-Aware)
-
-The primary strategy places symmetric bid/ask quotes on Polymarket prediction markets, capturing the spread and earning maker rebates while managing inventory risk.
-
-```bash
-npm run start:paper     # Simulated orders and fills only
-npm run start:shadow    # Live data, real targets, no order placement
-npm run start:live      # Real post-only orders (requires explicit config)
-```
-
-**Key config:** `MAX_MARKETS`, `MAX_EXPOSURE_USD`, `MAX_ORDER_SIZE_USD`, `MIN_SPREAD_TICKS`
-
-### Latency Arbitrage
-
-Live-like shadow strategy for BTC 15m Up/Down markets. It streams Binance BTC momentum, discovers Polymarket BTC 15m markets, computes would-live post-only orders, and writes JSONL events for soak analysis. It does **not** submit real orders; `MODE=small_live` is hard-blocked for this runner.
-
-```bash
-LATENCY_ARB_ENABLED=true MODE=shadow LIVE_TRADING_ENABLED=false npm run start:latency-arb
-```
-
-**Key config:** `LATENCY_ARB_ENABLED`, `LATENCY_ARB_MARKET_ASSET`, `LATENCY_ARB_MARKET_DURATION_MINUTES`, `LATENCY_ARB_MAX_ORDER_SIZE_USD`, `LATENCY_ARB_LOG_DIR`
-
-See [docs/latency-arbitrage.md](docs/latency-arbitrage.md) for full documentation and soak instructions.
-
-## Project Structure
-
-```
-src/
-├── engines/          # Pure logic (fair price, toxicity, inventory, quote, momentum, divergence)
-├── strategy/         # Orchestration, config, market selection, latency arb strategy
-├── risk/             # Guards and kill switches
-├── accounting/       # PnL tracking and decision tracing
-├── simulation/       # Paper execution models
-├── data/             # API and WebSocket connectors (Polymarket, Binance)
-├── execution/        # Order routing and management
-├── monitoring/       # Health checks and metrics
-├── notifier/         # Telegram notifications
-├── reporting/        # Periodic status reports
-├── scripts/          # Utility scripts (e.g., CLOB API key generation)
-├── types/            # Shared type definitions
-├── utils/            # Logger and helpers
-├── run-paper.ts      # Paper mode entry point
-├── run-shadow.ts     # Shadow mode entry point
-├── run-small-live.ts # Small live mode entry point
-├── run-latency-arb.ts # Latency arbitrage entry point
-└── run.ts            # Generic entry point
-```
-
-## Module Boundaries
-
-- `src/engines/`: Pure logic functions. Must have no side effects.
-- `src/strategy/`: Orchestration and configuration.
-- `src/risk/`: Guards and kill switches.
-- `src/accounting/`: PnL tracking and structured decision tracing.
-- `src/simulation/`: Paper execution models.
-- `src/data/`: API and WebSocket connectors.
-
-## Testing Conventions
-
-- Every engine has an associated unit test (e.g., `tests/engines/fair-price-engine.test.ts`)
-- Integration tests validate the complete end-to-end paper pipeline
-- Runtime invariants have dedicated assertion tests (`tests/invariants/runtime.test.ts`)
-- Never bypass risk checks to generate quotes faster
-
-## Deployment
-
-Production server:
-
-```bash
-ssh oraculus@46.225.147.43
-cd /opt/polymarketmm
-docker compose down && docker compose up --build -d
-```
-
-## License
-
-Private — All rights reserved.
+Do not reintroduce removed legacy strategy code.

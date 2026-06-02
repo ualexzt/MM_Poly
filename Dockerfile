@@ -10,4 +10,4 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
-CMD ["sh", "-c", "if [ \"$MODE\" = \"small_live\" ]; then node dist/run-small-live.js; elif [ \"$MODE\" = \"shadow\" ]; then node dist/run-shadow.js; else node dist/run-paper.js; fi"]
+CMD ["node", "-e", "console.log('pair-cost foundation image built; no trading daemon configured')"]

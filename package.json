@@ -1,30 +1,23 @@
 {
-  "name": "polymarket-mm-phase1",
+  "name": "polymarket-pair-cost-bot",
   "version": "0.1.0",
-  "description": "Polymarket rebate-aware market making - Phase 1 Paper Core",
+  "description": "Polymarket YES/NO pair-cost strategy foundation",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "start:paper": "tsx src/run-paper.ts",
-    "start:shadow": "tsx src/run-shadow.ts",
-    "start:live": "tsx src/run-small-live.ts",
-    "start:gabagool": "tsx src/run-micro-gabagool.ts",
-    "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts",
-    "start:latency-arb": "tsx src/run-latency-arb.ts"
+    "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts"
   },
   "dependencies": {
     "@polymarket/clob-client-v2": "^1.0.6",
     "dotenv": "^17.4.2",
-    "viem": "^2.51.3",
-    "ws": "^8.20.0"
+    "viem": "^2.51.3"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",
     "@types/node": "^20.19.39",
-    "@types/ws": "^8.18.1",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.0",
     "tsx": "^4.21.0",

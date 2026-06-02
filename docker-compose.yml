@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
-  polymarket-bot:
+  pair-cost-foundation:
     build: .
-    container_name: polymarket-mm-bot
-    restart: unless-stopped
+    container_name: polymarket-pair-cost-foundation
+    restart: "no"
     env_file:
       - .env
     environment:
