@@ -1,0 +1,80 @@
+import { GammaApiScanner } from './data/gamma-market-scanner';
+import { ClobApiClient } from './data/clob-orderbook-client';
+import { JsonlEventWriter } from './accounting/jsonl-event-writer';
+import { AccumulatorConfig } from './engines/accumulator';
+import { EqualizerConfig } from './engines/equalizer';
+import { RiskConfig } from './risk/pair-cost-risk';
+import { runAccumulatorCycle } from './strategy/accumulator-runner';
+
+const SCAN_INTERVAL_MS = 30_000;
+
+const ACCUMULATOR_CONFIG: AccumulatorConfig = {
+  maxPairCost: 0.98,
+  minEdgeBps: 100,
+  maxExposurePerMarketUsd: 5,
+  limitOrderOffsetCents: 1,
+};
+
+const EQUALIZER_CONFIG: EqualizerConfig = {
+  imbalanceThreshold: 1,
+  maxExposurePerMarketUsd: 5,
+  limitOrderOffsetCents: 1,
+};
+
+const RISK_CONFIG: RiskConfig = {
+  maxExposureUsd: 12,
+  maxExposurePerMarketUsd: 5,
+  maxDrawdownPct: 0.20,
+  maxOpenOrders: 4,
+  startingBalanceUsd: 15,
+};
+
+async function main(): Promise<void> {
+  const gammaBaseUrl = process.env.GAMMA_API_BASE_URL || 'https://gamma-api.polymarket.com';
+  const clobBaseUrl = process.env.CLOB_API_BASE_URL || 'https://clob.polymarket.com';
+  const logDir = process.env.PAIR_COST_LOG_DIR || 'logs';
+
+  const marketScanner = new GammaApiScanner(gammaBaseUrl);
+  const orderbookClient = new ClobApiClient(clobBaseUrl);
+  const logger = new JsonlEventWriter({ logDir, filePrefix: 'accumulator' });
+
+  // Paper mode: no real orders
+  const orderManager = {
+    placeLimitOrder: async (params: any) => {
+      console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=${params.size}`);
+      return { orderId: `paper-${Date.now()}`, status: 'LIVE' as const };
+    },
+    cancelStaleOrders: async () => [],
+    getOpenOrders: async () => [],
+  };
+
+  console.log(`[accumulator] starting in PAPER mode`);
+  console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
+  console.log(`[accumulator] config: maxPairCost=${ACCUMULATOR_CONFIG.maxPairCost} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
+  console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
+
+  const orderbooks = new Map<string, { yes: any; no: any }>();
+
+  const runCycle = async () => {
+    const result = await runAccumulatorCycle({
+      marketScanner,
+      orderbookClient,
+      orderManager,
+      logger,
+      accumulatorConfig: ACCUMULATOR_CONFIG,
+      equalizerConfig: EQUALIZER_CONFIG,
+      riskConfig: RISK_CONFIG,
+      currentBalanceUsd: 15,
+      getOrderbooks: () => orderbooks,
+    });
+    console.log(`[accumulator] cycle: ${result.decisions.length} decisions`);
+  };
+
+  await runCycle();
+  setInterval(runCycle, SCAN_INTERVAL_MS);
+}
+
+main().catch((err) => {
+  console.error('[accumulator] fatal error:', err);
+  process.exit(1);
+});
