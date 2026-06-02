@@ -12,6 +12,10 @@ describe('summarizePairCostAnalyticsEvents', () => {
     expect(summary.totalSnapshots).toBe(4);
     expect(summary.opportunitySnapshots).toBe(3);
     expect(summary.opportunityRate).toBe(0.75);
+    expect(summary.allPairCostMin).toBe(0.97);
+    expect(summary.allPairCostP50).toBe(0.98);
+    expect(summary.allPairCostP90).toBe(1.01);
+    expect(summary.allEdgeMax).toBe(0.03);
     expect(summary.pairCostP50).toBe(0.98);
     expect(summary.pairCostP90).toBe(0.99);
     expect(summary.edgeP50).toBe(0.02);
@@ -27,6 +31,8 @@ describe('summarizePairCostAnalyticsEvents', () => {
     ]);
 
     expect(summary.opportunitySnapshots).toBe(0);
+    expect(summary.allPairCostMin).toBe(1.01);
+    expect(summary.allEdgeMax).toBe(-0.01);
     expect(summary.pairCostP50).toBeNull();
     expect(summary.pairCostP90).toBeNull();
     expect(summary.edgeP50).toBeNull();
