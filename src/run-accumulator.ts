@@ -4,6 +4,7 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { polygon } from 'viem/chains';
 import { FifteenMinMarketScanner } from './data/fifteen-min-scanner';
 import { ClobApiClient } from './data/clob-orderbook-client';
+import { WsMarketOrderbookClient } from './data/ws-market-orderbook';
 import { JsonlEventWriter } from './accounting/jsonl-event-writer';
 import { loadLiveModeConfig } from './config/live-mode';
 import { applyObservedFills, normalizeClobTradesToObservedFills } from './execution/live-fill-tracker';
@@ -11,6 +12,7 @@ import { OrderManager } from './execution/order-manager';
 import { PolymarketLiveOrderClient } from './execution/polymarket-live-order-client';
 import { runAccumulatorCycle } from './strategy/accumulator-runner';
 import { PositionTracker } from './strategy/position-tracker';
+import { BookState } from './types/book';
 
 const SCAN_INTERVAL_MS = 30_000;
 
@@ -43,26 +45,6 @@ function createSmallLiveDependencies(clobBaseUrl: string): { orderManager: Order
   return { orderManager: new OrderManager(new PolymarketLiveOrderClient(clobClient as any)), clobClient };
 }
 
-async function fetchAllOrderbooks(client: ClobApiClient, markets: any[]): Promise<Map<string, { yes: any; no: any }>> {
-  const result = new Map();
-  const fetches: Promise<void>[] = [];
-
-  for (const market of markets) {
-    if (!market.yesTokenId || !market.noTokenId) continue;
-
-    fetches.push(
-      Promise.all([
-        client.fetchBook(market.conditionId, market.yesTokenId),
-        client.fetchBook(market.conditionId, market.noTokenId),
-      ]).then(([yes, no]) => {
-        result.set(market.conditionId, { yes, no });
-      }).catch(() => { /* skip failed fetches */ })
-    );
-  }
-
-  await Promise.all(fetches);
-  return result;
-}
 
 async function main(): Promise<void> {
   const gammaBaseUrl = process.env.GAMMA_API_BASE_URL || 'https://gamma-api.polymarket.com';
@@ -92,6 +74,61 @@ async function main(): Promise<void> {
   const liveDependencies = modeConfig.canPlaceLiveOrders ? createSmallLiveDependencies(clobBaseUrl) : null;
   const orderManager = liveDependencies ? liveDependencies.orderManager : paperOrderManager;
   const seenFillIds = new Set<string>();
+
+  // WebSocket orderbook cache (real-time, replaces stale REST polling)
+  const wsOrderbooks = new WsMarketOrderbookClient();
+  let wsConnected = false;
+  wsOrderbooks.connect().then(() => {
+    wsConnected = true;
+    console.log('[accumulator] WebSocket orderbook connected');
+  }).catch((err) => {
+    console.error('[accumulator] WebSocket connection failed, falling back to REST:', (err as Error).message);
+  });
+
+  // Resolve orderbooks: prefer WS cache, fall back to REST
+  async function resolveOrderbooks(markets: any[]): Promise<Map<string, { yes: BookState; no: BookState }>> {
+    const allIds: string[] = [];
+    for (const m of markets) {
+      if (m.yesTokenId) allIds.push(m.yesTokenId);
+      if (m.noTokenId) allIds.push(m.noTokenId);
+    }
+    if (wsConnected) {
+      wsOrderbooks.subscribe(allIds);
+    }
+
+    const result = new Map<string, { yes: BookState; no: BookState }>();
+    let wsHits = 0;
+    let restFetches = 0;
+
+    for (const market of markets) {
+      if (!market.yesTokenId || !market.noTokenId) continue;
+
+      const wsYes = wsOrderbooks.getBook(market.yesTokenId);
+      const wsNo = wsOrderbooks.getBook(market.noTokenId);
+
+      if (wsYes && wsNo) {
+        result.set(market.conditionId, { yes: wsYes, no: wsNo });
+        wsHits++;
+      } else {
+        // Fall back to REST for books not yet in WS cache
+        try {
+          const [yes, no] = await Promise.all([
+            orderbookClient.fetchBook(market.conditionId, market.yesTokenId),
+            orderbookClient.fetchBook(market.conditionId, market.noTokenId),
+          ]);
+          result.set(market.conditionId, { yes, no });
+          restFetches++;
+        } catch {
+          // skip failed fetches
+        }
+      }
+    }
+
+    if (wsHits > 0 || restFetches > 0) {
+      console.log(`[accumulator] orderbooks: ${wsHits} WS cache, ${restFetches} REST fallback`);
+    }
+    return result;
+  }
 
   console.log(`[accumulator] starting in ${modeConfig.canPlaceLiveOrders ? 'SMALL_LIVE' : 'PAPER'} mode (15-min markets)`);
   console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
@@ -129,7 +166,7 @@ async function main(): Promise<void> {
         }
       }
 
-      const orderbooks = await fetchAllOrderbooks(orderbookClient, markets);
+      const orderbooks = await resolveOrderbooks(markets);
       console.log(`[accumulator] fetched ${orderbooks.size} orderbooks`);
 
       const result = await runAccumulatorCycle({
@@ -144,7 +181,6 @@ async function main(): Promise<void> {
         tracker,
         getOrderbooks: () => orderbooks,
         recordFillOnOrderPlacement: !modeConfig.canPlaceLiveOrders,
-        minOrderNotionalUsd: modeConfig.canPlaceLiveOrders ? 1 : 0,
       });
       console.log(`[accumulator] cycle: ${result.decisions.length} decisions, tracker has ${tracker.getPositions().size} positions`);
     } catch (err) {

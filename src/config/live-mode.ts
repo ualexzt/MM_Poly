@@ -41,12 +41,14 @@ const SMALL_LIVE_ACCUMULATOR: AccumulatorConfig = {
   maxUnhedgedDelta: 2,
   minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 2,
+  minOrderNotionalUsd: 1,
 };
 
 const SMALL_LIVE_EQUALIZER: EqualizerConfig = {
   imbalanceThreshold: 0,
   tradeSize: 2,
   maxPairCost: 0.99,
+  minOrderNotionalUsd: 1,
 };
 
 const SMALL_LIVE_RISK: RiskConfig = {

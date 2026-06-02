@@ -10,6 +10,8 @@ export interface AccumulatorConfig {
   /** Opposite side ASK depth must be at least tradeSize * multiplier. */
   minLiquidityMultiplier: number;
   maxExposurePerMarketUsd: number;
+  /** CLOB minimum order notional in USD. If sizeUsd falls below, sizeShares is upsized. */
+  minOrderNotionalUsd?: number;
 }
 
 export interface Position {
@@ -115,7 +117,14 @@ export function decideAccumulatorEntry(
 
   const maxAddUsd = config.maxExposurePerMarketUsd - exposure;
   const maxByExposureShares = maxAddUsd / best.price;
-  const sizeShares = Math.min(config.tradeSize, ownBook.asks[0].size, maxByExposureShares);
+  let sizeShares = Math.min(config.tradeSize, ownBook.asks[0].size, maxByExposureShares);
+
+  // Upsize to meet CLOB minimum order notional
+  const minNotional = config.minOrderNotionalUsd ?? 0;
+  if (minNotional > 0 && sizeShares * best.price < minNotional) {
+    const upsizedShares = Math.ceil(minNotional / best.price);
+    sizeShares = Math.min(upsizedShares, ownBook.asks[0].size, maxByExposureShares);
+  }
 
   if (sizeShares <= 0) {
     return skip('no remaining exposure or ask size');

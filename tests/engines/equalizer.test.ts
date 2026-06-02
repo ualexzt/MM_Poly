@@ -120,4 +120,18 @@ describe('decideEqualizer - original Gabagool equalizer', () => {
     expect(decision.side).toBe('BALANCED');
     expect(decision.reason).toContain('ask unavailable');
   });
+
+  it('upsizes rebalance shares to meet CLOB minimum order notional', () => {
+    const config = { ...DEFAULT_CONFIG, minOrderNotionalUsd: 1 };
+    const pos: Position = { yesQty: 5, noQty: 1, avgYesPrice: 0.13, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.20, 20)] });
+    const noBook = makeBook({ asks: [ask(0.25, 20)] }); // cheap ask
+
+    const decision = decideEqualizer(pos, yesBook, noBook, config);
+
+    // side is NO (lagging), tradeSize=2, 2 × 0.25 = 0.50 < 1 → upsize to ceil(1/0.25) = 4
+    expect(decision.side).toBe('NO');
+    expect(decision.sizeShares).toBe(4);
+    expect(decision.sizeUsd).toBe(1);
+  });
 });

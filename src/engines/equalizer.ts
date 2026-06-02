@@ -6,6 +6,8 @@ export interface EqualizerConfig {
   tradeSize: number;
   /** Original equalizer cap: keep resulting pair cost below this (default 0.99). */
   maxPairCost: number;
+  /** CLOB minimum order notional in USD. If sizeUsd falls below, sizeShares is upsized. */
+  minOrderNotionalUsd?: number;
 }
 
 export interface Position {
@@ -68,7 +70,14 @@ export function decideEqualizer(
 
   const bestAsk = neededBook.bestAsk!;
   const limitPrice = Math.min(bestAsk, maxPrice);
-  const sizeShares = Math.min(targetQty, config.tradeSize, neededBook.asks[0].size);
+  let sizeShares = Math.min(targetQty, config.tradeSize, neededBook.asks[0].size);
+
+  // Upsize to meet CLOB minimum order notional
+  const minNotional = config.minOrderNotionalUsd ?? 0;
+  if (minNotional > 0 && sizeShares * limitPrice < minNotional) {
+    const upsizedShares = Math.ceil(minNotional / limitPrice);
+    sizeShares = Math.min(upsizedShares, neededBook.asks[0].size, targetQty);
+  }
 
   if (sizeShares <= 0) {
     return balanced('no size available to rebalance');

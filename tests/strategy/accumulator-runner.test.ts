@@ -151,7 +151,34 @@ describe('runAccumulatorCycle', () => {
     }));
   });
 
-  it('skips live order when decision notional is below minimum order notional', async () => {
+  it('upsizes live order when decision notional is below CLOB minimum', async () => {
+    const { input } = makeHarness({
+      orderbooks: new Map([
+        ['cid-1', {
+          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.25, 20)] }),
+          no: makeBook({ tokenId: 'no-1', asks: [ask(0.80, 20)] }),
+        }],
+      ]),
+    });
+    input.recordFillOnOrderPlacement = false;
+    input.accumulatorConfig = { ...ACCUMULATOR_CONFIG, minOrderNotionalUsd: 1 };
+
+    const result = await runAccumulatorCycle(input);
+
+    // 2 shares × 0.25 = 0.50 < 1 → upsize to ceil(1/0.25) = 4 shares
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].side).toBe('YES');
+    expect(result.decisions[0].sizeShares).toBe(4);
+    expect(result.decisions[0].sizeUsd).toBe(1);
+    expect(input.orderManager.placeLimitOrder).toHaveBeenCalledWith({
+      tokenId: 'yes-1',
+      side: 'BUY',
+      price: 0.25,
+      size: 4,
+    });
+  });
+
+  it('skips when upsizing would violate delta constraint', async () => {
     const { input } = makeHarness({
       orderbooks: new Map([
         ['cid-1', {
@@ -161,17 +188,13 @@ describe('runAccumulatorCycle', () => {
       ]),
     });
     input.recordFillOnOrderPlacement = false;
-    input.minOrderNotionalUsd = 1;
+    input.accumulatorConfig = { ...ACCUMULATOR_CONFIG, minOrderNotionalUsd: 1 };
 
     const result = await runAccumulatorCycle(input);
 
+    // upsized to ceil(1/0.13) = 8 → delta 8 > max 4 → SKIP
     expect(result.decisions).toHaveLength(0);
     expect(input.orderManager.placeLimitOrder).not.toHaveBeenCalled();
-    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
-      eventType: 'order_skipped_min_notional',
-      sizeUsd: 0.26,
-      minOrderNotionalUsd: 1,
-    }));
   });
 
   it('does not record fill on order placement when configured for live execution', async () => {

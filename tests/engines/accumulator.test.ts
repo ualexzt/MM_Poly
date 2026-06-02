@@ -125,4 +125,29 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
     expect(decision.sizeShares).toBe(3);
     expect(decision.sizeUsd).toBeCloseTo(1.5);
   });
+
+  it('upsizes shares to meet CLOB minimum order notional', () => {
+    const config = { ...DEFAULT_CONFIG, minOrderNotionalUsd: 1 };
+    const yesBook = makeBook({ asks: [ask(0.25, 20)] });
+    const noBook = makeBook({ asks: [ask(0.80, 30)] });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    // tradeSize=2 × 0.25 = 0.50 < 1 → upsize to ceil(1/0.25) = 4 shares
+    expect(decision.side).toBe('YES');
+    expect(decision.sizeShares).toBe(4);
+    expect(decision.sizeUsd).toBe(1);
+  });
+
+  it('skips when upsized shares exceed delta constraint', () => {
+    const config = { ...DEFAULT_CONFIG, minOrderNotionalUsd: 1 };
+    const yesBook = makeBook({ asks: [ask(0.13, 20)] });
+    const noBook = makeBook({ asks: [ask(0.80, 30)] });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    // upsize to ceil(1/0.13) = 8, delta = 8 > maxUnhedgedDelta=4 → SKIP
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('Delta constraint');
+  });
 });
