@@ -119,11 +119,16 @@ export function decideAccumulatorEntry(
   const maxByExposureShares = maxAddUsd / best.price;
   let sizeShares = Math.min(config.tradeSize, ownBook.asks[0].size, maxByExposureShares);
 
-  // Upsize to meet CLOB minimum order notional
+  // Upsize to meet CLOB minimum order notional, capped by delta
   const minNotional = config.minOrderNotionalUsd ?? 0;
   if (minNotional > 0 && sizeShares * best.price < minNotional) {
     const upsizedShares = Math.ceil(minNotional / best.price);
-    sizeShares = Math.min(upsizedShares, ownBook.asks[0].size, maxByExposureShares);
+    const maxByDelta = config.maxUnhedgedDelta - Math.abs(currentDelta(position));
+    sizeShares = Math.min(upsizedShares, ownBook.asks[0].size, maxByExposureShares, maxByDelta);
+    // If delta-capped size still doesn't meet min notional, we can't trade at this price
+    if (sizeShares * best.price < minNotional) {
+      return skip(`min notional unreachable at price ${best.price.toFixed(3)}: need ${upsizedShares} shares (delta cap ${maxByDelta.toFixed(1)})`);
+    }
   }
 
   if (sizeShares <= 0) {

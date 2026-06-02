@@ -178,7 +178,7 @@ describe('runAccumulatorCycle', () => {
     });
   });
 
-  it('skips when upsizing would violate delta constraint', async () => {
+  it('skips when upsizing capped by delta leaves notional below minimum', async () => {
     const { input } = makeHarness({
       orderbooks: new Map([
         ['cid-1', {
@@ -192,7 +192,7 @@ describe('runAccumulatorCycle', () => {
 
     const result = await runAccumulatorCycle(input);
 
-    // upsized to ceil(1/0.13) = 8 → delta 8 > max 4 → SKIP
+    // upsized to ceil(1/0.13) = 8, delta capped at 4 → 4 × 0.13 = 0.52 < 1 → SKIP
     expect(result.decisions).toHaveLength(0);
     expect(input.orderManager.placeLimitOrder).not.toHaveBeenCalled();
   });

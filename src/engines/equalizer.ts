@@ -72,11 +72,14 @@ export function decideEqualizer(
   const limitPrice = Math.min(bestAsk, maxPrice);
   let sizeShares = Math.min(targetQty, config.tradeSize, neededBook.asks[0].size);
 
-  // Upsize to meet CLOB minimum order notional
+  // Upsize to meet CLOB minimum order notional, capped by target quantity
   const minNotional = config.minOrderNotionalUsd ?? 0;
   if (minNotional > 0 && sizeShares * limitPrice < minNotional) {
     const upsizedShares = Math.ceil(minNotional / limitPrice);
     sizeShares = Math.min(upsizedShares, neededBook.asks[0].size, targetQty);
+    if (sizeShares * limitPrice < minNotional) {
+      return balanced(`min notional unreachable at price ${limitPrice.toFixed(3)}`);
+    }
   }
 
   if (sizeShares <= 0) {

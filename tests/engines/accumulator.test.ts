@@ -139,15 +139,15 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
     expect(decision.sizeUsd).toBe(1);
   });
 
-  it('skips when upsized shares exceed delta constraint', () => {
+  it('skips when upsized shares capped by delta leave notional below minimum', () => {
     const config = { ...DEFAULT_CONFIG, minOrderNotionalUsd: 1 };
     const yesBook = makeBook({ asks: [ask(0.13, 20)] });
     const noBook = makeBook({ asks: [ask(0.80, 30)] });
 
     const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
 
-    // upsize to ceil(1/0.13) = 8, delta = 8 > maxUnhedgedDelta=4 → SKIP
+    // upsize to ceil(1/0.13) = 8, delta capped at 4 → 4 × 0.13 = 0.52 < 1 → SKIP
     expect(decision.side).toBe('SKIP');
-    expect(decision.reason).toContain('Delta constraint');
+    expect(decision.reason).toContain('min notional unreachable');
   });
 });
