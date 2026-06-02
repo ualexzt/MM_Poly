@@ -133,6 +133,7 @@ describe('runAccumulatorCycle', () => {
       eventType: 'accumulator_entry',
       sizeShares: 2,
       sizeUsd: 0.84,
+      expectedPairCost: 0.94,
     }));
   });
 
@@ -156,8 +157,8 @@ describe('runAccumulatorCycle', () => {
     const { input } = makeHarness({
       orderbooks: new Map([
         ['cid-1', {
-          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.25, 20)] }),
-          no: makeBook({ tokenId: 'no-1', asks: [ask(0.80, 20)] }),
+          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.30, 20)] }),
+          no: makeBook({ tokenId: 'no-1', asks: [ask(0.55, 20)] }),
         }],
       ]),
     });
@@ -166,15 +167,15 @@ describe('runAccumulatorCycle', () => {
 
     const result = await runAccumulatorCycle(input);
 
-    // 2 shares × 0.25 = 0.50 < 1 → upsize to ceil(1/0.25) = 4 shares
+    // 0.30+0.55=0.85<0.98, 2×0.30=0.60<1 → upsize to ceil(1/0.30)=4
     expect(result.decisions).toHaveLength(1);
     expect(result.decisions[0].side).toBe('YES');
     expect(result.decisions[0].sizeShares).toBe(4);
-    expect(result.decisions[0].sizeUsd).toBe(1);
+    expect(result.decisions[0].sizeUsd).toBeCloseTo(1.20);
     expect(input.orderManager.placeLimitOrder).toHaveBeenCalledWith({
       tokenId: 'yes-1',
       side: 'BUY',
-      price: 0.25,
+      price: 0.30,
       size: 4,
       postOnly: false,
     });

@@ -48,28 +48,30 @@ function emptyPosition(): Position {
 }
 
 describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
-  it('buys the side with the lower expected pair cost when both opportunities exist', () => {
-    const yesBook = makeBook({ asks: [ask(0.80, 20)] });
-    const noBook = makeBook({ asks: [ask(0.70, 20)] });
+  it('buys the cheaper side when pair cost is below target (empty position)', () => {
+    const yesBook = makeBook({ asks: [ask(0.42, 20)] });
+    const noBook = makeBook({ asks: [ask(0.50, 20)] });
 
     const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
 
-    expect(decision.side).toBe('NO');
-    expect(decision.limitPrice).toBe(0.70);
+    // ask_yes(0.42) + ask_no(0.50) = 0.92 < 0.98 → YES
+    expect(decision.side).toBe('YES');
+    expect(decision.limitPrice).toBe(0.42);
     expect(decision.sizeShares).toBe(2);
-    expect(decision.expectedPairCost).toBe(0.70);
+    expect(decision.expectedPairCost).toBeCloseTo(0.92);
   });
 
-  it('uses existing opposite-side average price for opportunity checks', () => {
+  it('uses existing opposite-side average price when position exists', () => {
     const position: Position = { yesQty: 0, noQty: 2, avgYesPrice: 0, avgNoPrice: 0.41 };
     const yesBook = makeBook({ asks: [ask(0.54, 20)] });
     const noBook = makeBook({ asks: [ask(0.99, 20)] });
 
     const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
+    // yesExpectedPairCost = 0.54 + 0.41(avg_no) = 0.95 < 0.98
     expect(decision.side).toBe('YES');
     expect(decision.expectedPairCost).toBeCloseTo(0.95);
-    expect(decision.reason).toContain('ask_yes + avg_no');
+    expect(decision.reason).toContain('avg_no');
   });
 
   it('skips when neither side keeps expected pair cost below target', () => {
@@ -93,13 +95,15 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
     expect(decision.reason).toContain('Incomplete order book');
   });
 
-  it('enforces original delta constraint before buying more of an over-weight side', () => {
+  it('enforces delta when pair cost is below target but existing position is overweight', () => {
     const position: Position = { yesQty: 4, noQty: 0, avgYesPrice: 0.50, avgNoPrice: 0 };
     const yesBook = makeBook({ asks: [ask(0.20, 20)] });
-    const noBook = makeBook({ asks: [ask(0.99, 20)] });
+    const noBook = makeBook({ asks: [ask(0.70, 20)] });
 
     const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
+    // ask_yes(0.20) + ask_no(0.70) = 0.90 < 0.98 → YES opportunity
+    // but delta: 4 existing + 2 new = 6 > max 4 → SKIP
     expect(decision.side).toBe('SKIP');
     expect(decision.reason).toContain('Delta constraint');
   });
@@ -116,27 +120,29 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
 
   it('caps trade size by remaining per-market exposure and available ask size', () => {
     const config = { ...DEFAULT_CONFIG, tradeSize: 10, maxExposurePerMarketUsd: 5 };
-    const yesBook = makeBook({ asks: [ask(0.50, 3)] });
-    const noBook = makeBook({ asks: [ask(0.55, 50)] });
+    const yesBook = makeBook({ asks: [ask(0.40, 3)] });
+    const noBook = makeBook({ asks: [ask(0.45, 50)] });
 
     const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
 
+    // ask_yes(0.40) + ask_no(0.45) = 0.85 < 0.98 → YES, capped at ask size 3
     expect(decision.side).toBe('YES');
     expect(decision.sizeShares).toBe(3);
-    expect(decision.sizeUsd).toBeCloseTo(1.5);
+    expect(decision.sizeUsd).toBeCloseTo(1.2);
   });
 
   it('upsizes shares to meet CLOB minimum order notional', () => {
     const config = { ...DEFAULT_CONFIG, minOrderNotionalUsd: 1 };
-    const yesBook = makeBook({ asks: [ask(0.25, 20)] });
-    const noBook = makeBook({ asks: [ask(0.80, 30)] });
+    const yesBook = makeBook({ asks: [ask(0.30, 20)] });
+    const noBook = makeBook({ asks: [ask(0.50, 30)] });
 
     const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
 
-    // tradeSize=2 × 0.25 = 0.50 < 1 → upsize to ceil(1/0.25) = 4 shares
+    // ask_yes(0.30) + ask_no(0.50) = 0.80, tradeSize=2 × 0.30 = 0.60 < 1
+    // upsize to ceil(1/0.30) = 4 shares
     expect(decision.side).toBe('YES');
     expect(decision.sizeShares).toBe(4);
-    expect(decision.sizeUsd).toBe(1);
+    expect(decision.sizeUsd).toBeCloseTo(1.20);
   });
 
   it('skips when upsized shares capped by delta leave notional below minimum', () => {

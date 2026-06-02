@@ -84,25 +84,30 @@ export function decideAccumulatorEntry(
   const askYes = yesBook.bestAsk!;
   const askNo = noBook.bestAsk!;
 
+  // When a side hasn't been acquired yet, use current bestAsk as proxy
+  // (per AGENTS.md: bestAskYES + bestAskNO < 1.00)
+  const effectiveAvgNo = position.noQty > 0 ? position.avgNoPrice : askNo;
+  const effectiveAvgYes = position.yesQty > 0 ? position.avgYesPrice : askYes;
+
   const opportunities: Opportunity[] = [];
 
-  const yesExpectedPairCost = askYes + position.avgNoPrice;
+  const yesExpectedPairCost = askYes + effectiveAvgNo;
   if (yesExpectedPairCost < config.targetPairCost) {
     opportunities.push({
       side: 'YES',
       price: askYes,
       expectedPairCost: yesExpectedPairCost,
-      reason: `ask_yes + avg_no = ${yesExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+      reason: `ask_yes(=${askYes.toFixed(3)}) + ${position.noQty > 0 ? 'avg_no' : 'ask_no'}(=${effectiveAvgNo.toFixed(3)}) = ${yesExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
     });
   }
 
-  const noExpectedPairCost = askNo + position.avgYesPrice;
+  const noExpectedPairCost = askNo + effectiveAvgYes;
   if (noExpectedPairCost < config.targetPairCost) {
     opportunities.push({
       side: 'NO',
       price: askNo,
       expectedPairCost: noExpectedPairCost,
-      reason: `ask_no + avg_yes = ${noExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+      reason: `ask_no(=${askNo.toFixed(3)}) + ${position.yesQty > 0 ? 'avg_yes' : 'ask_yes'}(=${effectiveAvgYes.toFixed(3)}) = ${noExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
     });
   }
 
