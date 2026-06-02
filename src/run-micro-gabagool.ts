@@ -307,6 +307,28 @@ export function assertGabagoolModeAllowed(mode: MicroGabagoolConfig['mode'], ena
   }
 }
 
+export type GabagoolLoopScheduler = (callback: () => void, delayMs: number) => unknown;
+
+export function startGabagoolCycleLoop(
+  runCycleSafely: () => Promise<void>,
+  intervalMs: number,
+  schedule: GabagoolLoopScheduler = (callback, delayMs) => setTimeout(callback, delayMs),
+): void {
+  const runThenSchedule = async (): Promise<void> => {
+    try {
+      await runCycleSafely();
+    } catch {
+      // Keep the runner alive even if a caller provides a non-guarded cycle function.
+    } finally {
+      schedule(() => {
+        void runThenSchedule();
+      }, intervalMs);
+    }
+  };
+
+  void runThenSchedule();
+}
+
 export async function main(): Promise<void> {
   const runtime = createGabagoolRuntimeFromEnv();
   runtime.writeEvent({
@@ -340,10 +362,7 @@ export async function main(): Promise<void> {
     }
   };
 
-  await runCycleSafely();
-  setInterval(() => {
-    void runCycleSafely();
-  }, runtime.intervalMs);
+  startGabagoolCycleLoop(runCycleSafely, runtime.intervalMs);
 }
 
 if (require.main === module) {

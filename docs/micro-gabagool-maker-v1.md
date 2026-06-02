@@ -16,15 +16,18 @@ This strategy captures 1-2 tick spread ($0.01-$0.02) by placing post-only limit 
 ## Quick Start
 
 ```bash
-# Paper mode (default, safe)
+# Live-data paper mode (default, safe; no real orders)
 npm run start:gabagool
 
-# Shadow mode (live data, no real orders)
-MODE=shadow npm run start:gabagool
+# Optional API scan controls
+GABAGOOL_SCAN_INTERVAL_MS=30000 GABAGOOL_MAX_MARKETS_PER_SCAN=100 npm run start:gabagool
 
-# Live mode (requires explicit opt-in)
+# Live mode is fail-closed and still has no real order submitter in this MVP.
+# Do not use until a separate live-order implementation is designed and reviewed.
 MODE=live ENABLE_LIVE_TRADING=true npm run start:gabagool
 ```
+
+The current live-data MVP uses Gamma + CLOB reads only. It emits would-trade JSONL events and uses a simulated order manager; it never submits real Polymarket orders.
 
 ## Architecture
 
@@ -32,7 +35,11 @@ MODE=live ENABLE_LIVE_TRADING=true npm run start:gabagool
 src/
 ├── engines/
 │   └── micro-gabagool-scorer.ts         # Pure: score markets 0-10
+├── data/
+│   └── micro-gabagool-clob-orderbook-client.ts # CLOB top-of-book adapter
 ├── strategy/
+│   ├── gamma-micro-gabagool-scanner.ts  # Gamma + CLOB market scanner
+│   ├── micro-gabagool-rolling-stats.ts  # WMP/spread-change rolling stats
 │   ├── micro-gabagool-filters.ts        # Pure: market eligibility
 │   └── micro-gabagool-config.ts         # Config type + defaults
 ├── risk/
@@ -93,9 +100,35 @@ Markets are scored 0-10 using weighted components:
 4. If still not filled → try maker at `best_bid - 1 tick`
 5. If 60 sec later still not filled → FORCE TAKER EXIT (exception)
 
+## Live Data Runner
+
+`npm run start:gabagool` runs `src/run-micro-gabagool.ts` and wires:
+
+```text
+Gamma active markets
+  -> CLOB YES-token orderbooks
+  -> rolling WMP/spread stats
+  -> filters + scorer + risk manager
+  -> simulated order manager / paper engine
+  -> JSONL logs
+```
+
+Environment variables:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `MODE` | `paper` | Only `live` changes mode; any other value is treated as safe paper mode. |
+| `ENABLE_LIVE_TRADING` | `false` | Must be exactly `true` for `MODE=live`; live mode still has no real submitter in this MVP. |
+| `GABAGOOL_SCAN_INTERVAL_MS` | `30000` | Invalid or non-positive values fall back to default. |
+| `GABAGOOL_MAX_MARKETS_PER_SCAN` | `100` | Gamma page size / scan cap; invalid or non-positive values fall back to default. |
+| `GAMMA_API_BASE_URL` | `https://gamma-api.polymarket.com` | Trailing slash is accepted. |
+| `CLOB_API_BASE_URL` | `https://clob.polymarket.com` | Trailing slash is accepted. |
+| `GABAGOOL_LOG_PATH` | `logs/micro-gabagool-YYYY-MM-DD.jsonl` | UTC date; parent directory is created automatically. |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | unset | Optional startup notification only. Failures are logged and do not stop the loop. |
+
 ## Configuration
 
-All parameters in `src/strategy/micro-gabagool-config.ts`:
+Trading/risk parameters live in `src/strategy/micro-gabagool-config.ts`:
 
 ```typescript
 const DEFAULT_CONFIG: MicroGabagoolConfig = {
@@ -157,16 +190,16 @@ npm test
 
 ## Monitoring
 
-JSONL logs in `logs/micro-gabagool-*.jsonl` with events:
-- `entry_placed` — new entry order
-- `entry_filled` — entry order filled
-- `exit_placed` — exit order placed
-- `exit_filled` — exit order filled (profit recorded)
+JSONL logs in `logs/micro-gabagool-*.jsonl` with one JSON object per line. Current runner events include:
+- `startup` — process started and runtime mode recorded
+- `skip` — no candidates / no valid entries / kill-switch safe mode
 - `filter_reject` — market rejected by filter
 - `score_reject` — market rejected by score
 - `risk_block` — entry blocked by risk manager
+- `entry_placed` — would-place / simulated entry order
+- `entry_error` — simulated entry placement failed
 - `order_timeout` — order timed out
-- `kill_switch` — strategy stopped
+- `cycle_error` — scan or cycle failed; process stays alive for next interval
 
 ## Platform Notes
 

@@ -3,6 +3,7 @@ import {
   assertGabagoolModeAllowed,
   createGabagoolRuntimeFromEnv,
   createJsonlEventWriter,
+  startGabagoolCycleLoop,
   CycleDeps,
   MarketCandidate,
 } from '../../src/run-micro-gabagool';
@@ -225,6 +226,31 @@ describe('micro gabagool integration', () => {
     expect(() => writer({ eventType: 'startup' })).not.toThrow();
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it('should schedule the next runner cycle only after the current cycle completes', async () => {
+    const scheduledCallbacks: Array<() => void> = [];
+    let resolveFirstCycle: (() => void) | undefined;
+    const runCycle = jest.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => {
+        resolveFirstCycle = resolve;
+      }))
+      .mockResolvedValue(undefined);
+
+    startGabagoolCycleLoop(runCycle, 30000, (callback) => {
+      scheduledCallbacks.push(callback);
+    });
+
+    expect(runCycle).toHaveBeenCalledTimes(1);
+    expect(scheduledCallbacks).toHaveLength(0);
+
+    resolveFirstCycle!();
+    await Promise.resolve();
+
+    expect(scheduledCallbacks).toHaveLength(1);
+    scheduledCallbacks[0]();
+
+    expect(runCycle).toHaveBeenCalledTimes(2);
   });
 
   it('should select highest scoring market', async () => {
