@@ -5,21 +5,21 @@
 ## Tasks
 
 ### Task 1: Pure Engine — pair-cost-scanner
-- [ ] Write failing tests for `calculatePairCost` and `scanPairCostOpportunities`
-- [ ] Implement engine to pass tests
-- [ ] Verify: all tests green
+- [x] Write failing tests for `calculatePairCost` and `scanPairCostOpportunities`
+- [x] Implement engine to pass tests
+- [x] Verify: all tests green
 
 ### Task 2: Runner — pair-cost-runner
-- [ ] Write failing tests for `fetchPairOrderbooks` and `runPairCostScanCycle`
-- [ ] Implement runner with injected clients
-- [ ] Verify: all tests green
+- [x] Write failing tests for `fetchPairOrderbooks` and `runPairCostScanCycle`
+- [x] Implement runner with injected clients
+- [x] Verify: all tests green
 
 ### Task 3: CLI Entrypoint — run-pair-cost
-- [ ] Write `src/run-pair-cost.ts` CLI script
-- [ ] Add `start:pair-cost` to package.json scripts
-- [ ] Verify: `npm run build` passes
+- [x] Write `src/run-pair-cost.ts` CLI script
+- [x] Add `start:pair-cost` to package.json scripts
+- [x] Verify: `npm run build` passes
 
 ### Task 4: Integration Verification
-- [ ] Run full test suite
-- [ ] Verify no legacy references
-- [ ] Commit and push
+- [x] Run full test suite
+- [x] Verify no legacy references
+- [x] Commit and push
