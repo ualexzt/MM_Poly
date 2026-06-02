@@ -2,7 +2,7 @@ services:
   pair-cost-foundation:
     build: .
     container_name: polymarket-pair-cost-foundation
-    restart: "no"
+    restart: unless-stopped
     env_file:
       - .env
     environment:

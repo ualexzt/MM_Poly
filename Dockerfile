@@ -10,4 +10,4 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
-CMD ["node", "-e", "console.log('pair-cost foundation image built; no trading daemon configured')"]
+CMD ["node", "dist/run-accumulator.js"]
