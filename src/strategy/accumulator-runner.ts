@@ -32,6 +32,7 @@ export interface AccumulatorCycleInput {
   equalizerConfig: EqualizerConfig;
   riskConfig: RiskConfig;
   currentBalanceUsd: number;
+  tracker: PositionTracker;
   getOrderbooks(): Map<string, { yes: BookState; no: BookState }>;
 }
 
@@ -43,17 +44,15 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
   const {
     marketScanner, orderManager, logger,
     accumulatorConfig, equalizerConfig, riskConfig,
-    currentBalanceUsd, getOrderbooks,
+    currentBalanceUsd, tracker, getOrderbooks,
   } = input;
 
   const decisions: AccumulatorDecision[] = [];
-  const tracker = new PositionTracker();
 
   try {
     const allMarkets = await marketScanner.fetchMarkets();
     const markets = allMarkets.filter(m => m.active && !m.closed && m.enableOrderBook && m.yesTokenId && m.noTokenId);
 
-    // Cancel stale orders first
     await orderManager.cancelStaleOrders(60_000);
 
     const orderbooks = getOrderbooks();
@@ -62,18 +61,20 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       const books = orderbooks.get(market.conditionId);
       if (!books) continue;
 
-      const position = tracker.getPosition(market.conditionId);
-      const pos: Position = position
-        ? { yesQty: position.yesQty, noQty: position.noQty, avgYesPrice: position.avgYesPrice, avgNoPrice: position.avgNoPrice }
-        : { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
+      // Skip if already have position in this market
+      const existing = tracker.getPosition(market.conditionId);
+      if (existing && (existing.yesQty > 0 || existing.noQty > 0)) {
+        continue;
+      }
+
+      const pos: Position = { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
 
       // Check risk
-      const exposure = pos.yesQty * pos.avgYesPrice + pos.noQty * pos.avgNoPrice;
       const openOrders = await orderManager.getOpenOrders();
       const risk = checkRisk({
         config: riskConfig,
         totalExposureUsd: tracker.getTotalExposureUsd(),
-        marketExposureUsd: exposure,
+        marketExposureUsd: 0,
         openOrderCount: openOrders.length,
         currentBalanceUsd,
       });
@@ -83,22 +84,11 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         continue;
       }
 
-      // Try equalizer first (rebalance existing position)
-      const eqDecision = decideEqualizer(pos, books.yes, books.no, equalizerConfig);
-      if (eqDecision.side !== 'BALANCED') {
-        const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
-        const limitPrice = Math.max(0.01, (eqDecision.side === 'YES' ? books.yes.bestAsk! : books.no.bestAsk!) - equalizerConfig.limitOrderOffsetCents / 100);
-        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: limitPrice, size: eqDecision.sizeUsd / limitPrice });
-        logger.write({ eventType: 'equalizer_entry', marketId: market.conditionId, side: eqDecision.side, limitPrice, sizeUsd: eqDecision.sizeUsd, orderId: result.orderId, reason: eqDecision.reason });
-        decisions.push({ side: eqDecision.side as 'YES' | 'NO', limitPrice, sizeUsd: eqDecision.sizeUsd, reason: eqDecision.reason });
-        continue;
-      }
-
       // Try accumulator (new entry)
       const accDecision = decideAccumulatorEntry(pos, books.yes, books.no, accumulatorConfig);
       if (accDecision.side !== 'SKIP') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
-        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeUsd / accDecision.limitPrice });
+        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeUsd });
         logger.write({ eventType: 'accumulator_entry', marketId: market.conditionId, ...accDecision, orderId: result.orderId });
         decisions.push(accDecision);
       }

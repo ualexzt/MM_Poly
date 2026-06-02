@@ -5,6 +5,7 @@ import { AccumulatorConfig } from './engines/accumulator';
 import { EqualizerConfig } from './engines/equalizer';
 import { RiskConfig } from './risk/pair-cost-risk';
 import { runAccumulatorCycle } from './strategy/accumulator-runner';
+import { PositionTracker } from './strategy/position-tracker';
 
 const SCAN_INTERVAL_MS = 30_000;
 
@@ -33,7 +34,7 @@ async function fetchAllOrderbooks(client: ClobApiClient, markets: any[]): Promis
   const result = new Map();
   const fetches: Promise<void>[] = [];
 
-  for (const market of markets.slice(0, 20)) { // limit to top 20 for rate limits
+  for (const market of markets.slice(0, 20)) {
     if (!market.yesTokenId || !market.noTokenId) continue;
 
     fetches.push(
@@ -58,11 +59,12 @@ async function main(): Promise<void> {
   const marketScanner = new GammaApiScanner(gammaBaseUrl);
   const orderbookClient = new ClobApiClient(clobBaseUrl);
   const logger = new JsonlEventWriter({ logDir, filePrefix: 'accumulator' });
+  const tracker = new PositionTracker();
 
   // Paper mode: no real orders
   const orderManager = {
     placeLimitOrder: async (params: any) => {
-      console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=${params.size}`);
+      console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=$${params.size.toFixed(2)}`);
       return { orderId: `paper-${Date.now()}`, status: 'LIVE' as const };
     },
     cancelStaleOrders: async () => [],
@@ -74,15 +76,12 @@ async function main(): Promise<void> {
   console.log(`[accumulator] config: maxPairCost=${ACCUMULATOR_CONFIG.maxPairCost} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
   console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
 
-  let cachedOrderbooks = new Map<string, { yes: any; no: any }>();
-
   const runCycle = async () => {
     try {
-      // Fetch fresh orderbooks each cycle
       const markets = await marketScanner.fetchMarkets();
       const activeMarkets = markets.filter(m => m.active && !m.closed && m.enableOrderBook && m.yesTokenId && m.noTokenId);
-      cachedOrderbooks = await fetchAllOrderbooks(orderbookClient, activeMarkets);
-      console.log(`[accumulator] fetched ${cachedOrderbooks.size} orderbooks from ${activeMarkets.length} active markets`);
+      const orderbooks = await fetchAllOrderbooks(orderbookClient, activeMarkets);
+      console.log(`[accumulator] fetched ${orderbooks.size} orderbooks from ${activeMarkets.length} active markets`);
 
       const result = await runAccumulatorCycle({
         marketScanner,
@@ -93,9 +92,10 @@ async function main(): Promise<void> {
         equalizerConfig: EQUALIZER_CONFIG,
         riskConfig: RISK_CONFIG,
         currentBalanceUsd: 15,
-        getOrderbooks: () => cachedOrderbooks,
+        tracker,
+        getOrderbooks: () => orderbooks,
       });
-      console.log(`[accumulator] cycle: ${result.decisions.length} decisions`);
+      console.log(`[accumulator] cycle: ${result.decisions.length} decisions, tracker has ${tracker.getPositions().size} positions`);
     } catch (err) {
       console.error('[accumulator] cycle error:', (err as Error).message);
     }

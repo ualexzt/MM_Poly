@@ -4,6 +4,7 @@ import { AccumulatorConfig } from '../../src/engines/accumulator';
 import { EqualizerConfig } from '../../src/engines/equalizer';
 import { RiskConfig } from '../../src/risk/pair-cost-risk';
 import { runAccumulatorCycle } from '../../src/strategy/accumulator-runner';
+import { PositionTracker } from '../../src/strategy/position-tracker';
 
 const ACCUMULATOR_CONFIG: AccumulatorConfig = {
   maxPairCost: 1.03,
@@ -85,6 +86,7 @@ describe('runAccumulatorCycle', () => {
       getOpenOrders: jest.fn().mockResolvedValue([]),
     };
     const logger = { write: jest.fn() };
+    const tracker = new PositionTracker();
 
     const result = await runAccumulatorCycle({
       marketScanner,
@@ -95,6 +97,7 @@ describe('runAccumulatorCycle', () => {
       equalizerConfig: EQUALIZER_CONFIG,
       riskConfig: RISK_CONFIG,
       currentBalanceUsd: 15,
+      tracker,
       getOrderbooks: () => orderbooks,
     });
 
@@ -104,6 +107,43 @@ describe('runAccumulatorCycle', () => {
     expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'accumulator_entry',
     }));
+  });
+
+  it('skips market when already has position', async () => {
+    const markets = [makeMarket()];
+    const orderbooks = new Map([
+      ['cid-1', {
+        yes: makeBook({ tokenId: 'yes-1', bestAsk: 0.42, bestAskSizeUsd: 100 }),
+        no: makeBook({ tokenId: 'no-1', bestAsk: 0.52, bestAskSizeUsd: 100 }),
+      }],
+    ]);
+
+    const marketScanner = { fetchMarkets: jest.fn().mockResolvedValue(markets) };
+    const orderbookClient = { fetchBook: jest.fn() };
+    const orderManager = {
+      placeLimitOrder: jest.fn(),
+      cancelStaleOrders: jest.fn().mockResolvedValue([]),
+      getOpenOrders: jest.fn().mockResolvedValue([]),
+    };
+    const logger = { write: jest.fn() };
+    const tracker = new PositionTracker();
+    tracker.updateFill('cid-1', 'YES', 0.42, 10); // already have position
+
+    const result = await runAccumulatorCycle({
+      marketScanner,
+      orderbookClient,
+      orderManager,
+      logger,
+      accumulatorConfig: ACCUMULATOR_CONFIG,
+      equalizerConfig: EQUALIZER_CONFIG,
+      riskConfig: RISK_CONFIG,
+      currentBalanceUsd: 15,
+      tracker,
+      getOrderbooks: () => orderbooks,
+    });
+
+    expect(result.decisions).toHaveLength(0);
+    expect(orderManager.placeLimitOrder).not.toHaveBeenCalled();
   });
 
   it('skips when risk check fails', async () => {
@@ -123,6 +163,7 @@ describe('runAccumulatorCycle', () => {
       getOpenOrders: jest.fn().mockResolvedValue([]),
     };
     const logger = { write: jest.fn() };
+    const tracker = new PositionTracker();
 
     const result = await runAccumulatorCycle({
       marketScanner,
@@ -132,7 +173,8 @@ describe('runAccumulatorCycle', () => {
       accumulatorConfig: ACCUMULATOR_CONFIG,
       equalizerConfig: EQUALIZER_CONFIG,
       riskConfig: RISK_CONFIG,
-      currentBalanceUsd: 5, // low balance → risk blocks
+      currentBalanceUsd: 5,
+      tracker,
       getOrderbooks: () => orderbooks,
     });
 
@@ -151,6 +193,7 @@ describe('runAccumulatorCycle', () => {
       getOpenOrders: jest.fn().mockResolvedValue([]),
     };
     const logger = { write: jest.fn() };
+    const tracker = new PositionTracker();
 
     const result = await runAccumulatorCycle({
       marketScanner,
@@ -161,6 +204,7 @@ describe('runAccumulatorCycle', () => {
       equalizerConfig: EQUALIZER_CONFIG,
       riskConfig: RISK_CONFIG,
       currentBalanceUsd: 15,
+      tracker,
       getOrderbooks: () => new Map(),
     });
 
