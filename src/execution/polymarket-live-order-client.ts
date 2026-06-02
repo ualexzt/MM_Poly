@@ -1,9 +1,23 @@
 import { ClobOrderClient, OpenOrder, OrderResult } from './order-manager';
 
 export interface MinimalPolymarketClobClient {
-  createOrder(params: Record<string, unknown>): Promise<{ id?: string; orderId?: string }>;
-  cancelOrder(orderId: string): Promise<void>;
-  getOpenOrders(): Promise<Array<{ id?: string; orderId?: string; tokenID?: string; tokenId?: string; createdAt?: number }>>;
+  createAndPostOrder(
+    userOrder: Record<string, unknown>,
+    options: undefined,
+    orderType: 'GTC',
+    postOnly: true,
+  ): Promise<{ id?: string; orderId?: string; orderID?: string }>;
+  cancelOrder(payload: { orderID: string }): Promise<void>;
+  getOpenOrders(): Promise<Array<{
+    id?: string;
+    orderId?: string;
+    orderID?: string;
+    tokenID?: string;
+    tokenId?: string;
+    asset_id?: string;
+    createdAt?: number;
+    created_at?: number;
+  }>>;
 }
 
 export class PolymarketLiveOrderClient implements ClobOrderClient {
@@ -11,29 +25,28 @@ export class PolymarketLiveOrderClient implements ClobOrderClient {
 
   async createOrder(params: { tokenId: string; side: string; price: number; size: number }): Promise<OrderResult> {
     try {
-      const order = await this.clob.createOrder({
+      const order = await this.clob.createAndPostOrder({
         tokenID: params.tokenId,
         side: params.side,
         price: params.price,
         size: params.size,
-        postOnly: true,
-      });
-      return { orderId: order.id ?? order.orderId ?? null, status: 'LIVE' };
+      }, undefined, 'GTC', true);
+      return { orderId: order.id ?? order.orderId ?? order.orderID ?? null, status: 'LIVE' };
     } catch (err) {
       return { orderId: null, status: 'ERROR', error: (err as Error).message };
     }
   }
 
   async cancelOrder(orderId: string): Promise<void> {
-    await this.clob.cancelOrder(orderId);
+    await this.clob.cancelOrder({ orderID: orderId });
   }
 
   async getOpenOrders(): Promise<OpenOrder[]> {
     const orders = await this.clob.getOpenOrders();
     return orders.map((o) => ({
-      orderId: o.id ?? o.orderId ?? '',
-      tokenId: o.tokenID ?? o.tokenId ?? '',
-      createdAt: o.createdAt ?? Date.now(),
+      orderId: o.id ?? o.orderId ?? o.orderID ?? '',
+      tokenId: o.tokenID ?? o.tokenId ?? o.asset_id ?? '',
+      createdAt: o.createdAt ?? o.created_at ?? Date.now(),
     })).filter((o) => o.orderId.length > 0);
   }
 }
