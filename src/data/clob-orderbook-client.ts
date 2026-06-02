@@ -52,6 +52,7 @@ function mapClobBook(data: any, tokenId: string, conditionId: string): BookState
     depth3Usd: bids.slice(0, 3).reduce((s, b) => s + b.sizeUsd, 0) + asks.slice(0, 3).reduce((s, a) => s + a.sizeUsd, 0),
     tickSize,
     minOrderSize,
+    lastTradePrice: data.last_trade_price ? parseFloat(data.last_trade_price) : null,
     orderbookHash: data.hash || null,
     lastUpdateMs: Date.now()
   };

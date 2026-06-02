@@ -42,6 +42,7 @@ const SMALL_LIVE_ACCUMULATOR: AccumulatorConfig = {
   minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 2,
   minOrderNotionalUsd: 1,
+  maxSpread: 0.10,
 };
 
 const SMALL_LIVE_EQUALIZER: EqualizerConfig = {

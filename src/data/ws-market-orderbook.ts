@@ -158,7 +158,10 @@ export class WsMarketOrderbookClient {
         case 'price_change':
           this.handlePriceChange(msg);
           break;
-        // Other event types (last_trade_price, tick_size_change, best_bid_ask) ignored for now
+        case 'last_trade_price':
+          this.handleLastTrade(msg);
+          break;
+        // tick_size_change, best_bid_ask ignored for now
       }
     } catch {
       // Ignore unparseable messages (e.g., PONG text or corrupted JSON)
@@ -229,6 +232,18 @@ export class WsMarketOrderbookClient {
 
       book.depth1Usd = (book.bids[0]?.sizeUsd || 0) + (book.asks[0]?.sizeUsd || 0);
       book.depth3Usd = book.bids.slice(0, 3).reduce((s, b) => s + b.sizeUsd, 0) + book.asks.slice(0, 3).reduce((s, a) => s + a.sizeUsd, 0);
+      book.lastUpdateMs = Date.now();
+    }
+  }
+
+  private handleLastTrade(data: any): void {
+    const assetId = data.asset_id as string;
+    const book = this.books.get(assetId);
+    if (!book) return;
+
+    const price = parseFloat(data.price);
+    if (!Number.isNaN(price) && price > 0) {
+      book.lastTradePrice = price;
       book.lastUpdateMs = Date.now();
     }
   }

@@ -1,7 +1,7 @@
 import { BookState } from '../types/book';
 
 export interface AccumulatorConfig {
-  /** Original Gabagool target: 1.00 - profit_margin (default 0.98). */
+  /** Pair-cost target: avg_YES + avg_NO < targetPairCost (article: < 0.99). */
   targetPairCost: number;
   /** Order quantity in outcome shares, not USD. */
   tradeSize: number;
@@ -14,6 +14,8 @@ export interface AccumulatorConfig {
   minOrderNotionalUsd?: number;
   /** Minimum profit per share to trigger a take-profit SELL (default 0 = any profit). */
   minProfitPerShareUsd?: number;
+  /** Skip markets where spread > this value (placeholder-order guard). */
+  maxSpread?: number;
 }
 
 export interface Position {
@@ -25,13 +27,13 @@ export interface Position {
 
 export interface AccumulatorDecision {
   side: 'YES' | 'NO' | 'SELL_YES' | 'SELL_NO' | 'SKIP';
-  /** Price at which to execute. For SELL, this is the limit (bestBid). */
+  /** Price at which to execute the limit order. */
   limitPrice: number;
   /** Quantity in outcome shares. */
   sizeShares: number;
   /** Notional value at limitPrice. */
   sizeUsd: number;
-  /** For BUY decisions: expected total pair cost. For SELL: realized profit. */
+  /** For BUY: expected total pair cost. For SELL: realized profit. */
   expectedPairCost: number;
   reason: string;
 }
@@ -41,6 +43,11 @@ interface Opportunity {
   price: number;
   expectedPairCost: number;
   reason: string;
+}
+
+/** Best estimate of "real" price when orderbook has wide spreads. */
+function estPrice(book: BookState): number {
+  return book.lastTradePrice ?? book.midpoint ?? book.bestAsk ?? 0.50;
 }
 
 function currentExposureUsd(pos: Position): number {
@@ -61,24 +68,15 @@ function hasUsableAsk(book: BookState): boolean {
 
 function skip(reason: string): AccumulatorDecision {
   return {
-    side: 'SKIP',
-    limitPrice: 0,
-    sizeShares: 0,
-    sizeUsd: 0,
-    expectedPairCost: 0,
-    reason,
+    side: 'SKIP', limitPrice: 0, sizeShares: 0, sizeUsd: 0, expectedPairCost: 0, reason,
   };
 }
 
 function sell(side: 'SELL_YES' | 'SELL_NO', price: number, size: number, avgPaid: number, reason: string): AccumulatorDecision {
   const profitPerShare = price - avgPaid;
   return {
-    side,
-    limitPrice: price,
-    sizeShares: size,
-    sizeUsd: size * price,
-    expectedPairCost: profitPerShare * size,
-    reason,
+    side, limitPrice: price, sizeShares: size, sizeUsd: size * price,
+    expectedPairCost: profitPerShare * size, reason,
   };
 }
 
@@ -88,6 +86,15 @@ export function decideAccumulatorEntry(
   noBook: BookState,
   config: AccumulatorConfig,
 ): AccumulatorDecision {
+  // --- Spread filter: skip markets with placeholder orders ---
+  const maxSpread = config.maxSpread ?? 1.0;
+  if (yesBook.spread !== null && yesBook.spread > maxSpread) {
+    return skip(`YES spread ${yesBook.spread.toFixed(3)} > max ${maxSpread}`);
+  }
+  if (noBook.spread !== null && noBook.spread > maxSpread) {
+    return skip(`NO spread ${noBook.spread.toFixed(3)} > max ${maxSpread}`);
+  }
+
   if (!hasUsableAsk(yesBook) || !hasUsableAsk(noBook)) {
     return skip('Incomplete order book, skipping scan');
   }
@@ -130,49 +137,53 @@ export function decideAccumulatorEntry(
     sellOps.sort((a, b) => b.profitMargin - a.profitMargin);
     const best = sellOps[0];
     const sideName = best.side === 'SELL_YES' ? 'YES' : 'NO';
-
-    // Min notional check
     const sellNotional = best.qty * best.price;
     const minNotionalSell = config.minOrderNotionalUsd ?? 0;
     if (minNotionalSell > 0 && sellNotional < minNotionalSell) {
       return skip(`take-profit SELL ${sideName} notional ${sellNotional.toFixed(2)} < min ${minNotionalSell}`);
     }
-
     return sell(
       best.side, best.price, best.qty, best.avgPaid,
       `take-profit: sell ${sideName} @ ${best.price.toFixed(3)} (avg ${best.avgPaid.toFixed(3)}, profit/shr ${best.profitMargin.toFixed(3)})`,
     );
   }
 
-  // When a side hasn't been acquired yet, use current bestAsk as proxy
-  // (per AGENTS.md: bestAskYES + bestAskNO < 1.00)
-  const effectiveAvgNo = position.noQty > 0 ? position.avgNoPrice : askNo;
-  const effectiveAvgYes = position.yesQty > 0 ? position.avgYesPrice : askYes;
+  // --- Pair-cost accumulation (Gabagool strategy from article) ---
+  // Article formula: Pair Cost = avg_YES + avg_NO.
+  // When a side hasn't been bought (avg=0), use estimated market price
+  // to evaluate whether the eventual pair can be profitable.
+  const estNo = position.noQty > 0 ? position.avgNoPrice : estPrice(noBook);
+  const estYes = position.yesQty > 0 ? position.avgYesPrice : estPrice(yesBook);
+
+  // For the order itself, use estimated price (not placeholder ask)
+  // to get a realistic fill. Fall back to ask if estimation is unavailable.
+  const buyYesPrice = estPrice(yesBook) > 0 ? estPrice(yesBook) : askYes;
+  const buyNoPrice = estPrice(noBook) > 0 ? estPrice(noBook) : askNo;
 
   const opportunities: Opportunity[] = [];
 
-  const yesExpectedPairCost = askYes + effectiveAvgNo;
+  const yesExpectedPairCost = buyYesPrice + estNo;
   if (yesExpectedPairCost < config.targetPairCost) {
     opportunities.push({
       side: 'YES',
-      price: askYes,
+      price: buyYesPrice,
       expectedPairCost: yesExpectedPairCost,
-      reason: `ask_yes(=${askYes.toFixed(3)}) + ${position.noQty > 0 ? 'avg_no' : 'ask_no'}(=${effectiveAvgNo.toFixed(3)}) = ${yesExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+      reason: `buy YES @ ${buyYesPrice.toFixed(3)} + ${position.noQty > 0 ? 'avg_no' : 'est_no'}(=${estNo.toFixed(3)}) = ${yesExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
     });
   }
 
-  const noExpectedPairCost = askNo + effectiveAvgYes;
+  const noExpectedPairCost = buyNoPrice + estYes;
   if (noExpectedPairCost < config.targetPairCost) {
     opportunities.push({
       side: 'NO',
-      price: askNo,
+      price: buyNoPrice,
       expectedPairCost: noExpectedPairCost,
-      reason: `ask_no(=${askNo.toFixed(3)}) + ${position.yesQty > 0 ? 'avg_yes' : 'ask_yes'}(=${effectiveAvgYes.toFixed(3)}) = ${noExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+      reason: `buy NO @ ${buyNoPrice.toFixed(3)} + ${position.yesQty > 0 ? 'avg_yes' : 'est_yes'}(=${estYes.toFixed(3)}) = ${noExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
     });
   }
 
   if (opportunities.length === 0) {
-    return skip('no opportunity below target pair cost');
+    return skip(`no opportunity: est pair costs YES=${yesExpectedPairCost.toFixed(3)} NO=${noExpectedPairCost.toFixed(3)} >= target ${config.targetPairCost}`);
   }
 
   opportunities.sort((a, b) => a.expectedPairCost - b.expectedPairCost);
@@ -190,7 +201,6 @@ export function decideAccumulatorEntry(
     const upsizedShares = Math.ceil(minNotional / best.price);
     const maxByDelta = config.maxUnhedgedDelta - Math.abs(currentDelta(position));
     sizeShares = Math.min(upsizedShares, ownBook.asks[0].size, maxByExposureShares, maxByDelta);
-    // If delta-capped size still doesn't meet min notional, we can't trade at this price
     if (sizeShares * best.price < minNotional) {
       return skip(`min notional unreachable at price ${best.price.toFixed(3)}: need ${upsizedShares} shares (delta cap ${maxByDelta.toFixed(1)})`);
     }

@@ -158,6 +158,43 @@ describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
   });
 });
 
+describe('decideAccumulatorEntry - spread filter', () => {
+  it('skips when YES spread exceeds maxSpread', () => {
+    const config = { ...DEFAULT_CONFIG, maxSpread: 0.10 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.01, size: 100, sizeUsd: 1 }], bestBid: 0.01, bestAsk: 0.50, spread: 0.49 });
+    const noBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.49, size: 100, sizeUsd: 49 }], bestBid: 0.49, bestAsk: 0.50, spread: 0.01 });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('YES spread');
+  });
+
+  it('skips when NO spread exceeds maxSpread', () => {
+    const config = { ...DEFAULT_CONFIG, maxSpread: 0.10 };
+    const yesBook = makeBook({ asks: [ask(0.42, 20)], bids: [{ price: 0.41, size: 100, sizeUsd: 41 }], bestBid: 0.41, bestAsk: 0.42, spread: 0.01 });
+    const noBook = makeBook({ asks: [ask(0.99, 20)], bids: [{ price: 0.01, size: 100, sizeUsd: 1 }], bestBid: 0.01, bestAsk: 0.99, spread: 0.98 });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('NO spread');
+  });
+
+  it('trades when spread is within limit and pair cost below target', () => {
+    const config = { ...DEFAULT_CONFIG, maxSpread: 0.10 };
+    const yesBook = makeBook({ asks: [ask(0.42, 20)], bids: [{ price: 0.41, size: 100, sizeUsd: 41 }], bestBid: 0.41, bestAsk: 0.42, spread: 0.01, midpoint: 0.415 });
+    const noBook = makeBook({ asks: [ask(0.50, 20)], bids: [{ price: 0.49, size: 100, sizeUsd: 49 }], bestBid: 0.49, bestAsk: 0.50, spread: 0.01, midpoint: 0.495 });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    // estYes=midpoint 0.415, estNo=midpoint 0.495. buyYesPrice=0.415.
+    // yesExpectedPairCost = 0.415+0.495=0.91 < 0.98 → YES
+    expect(decision.side).toBe('YES');
+    expect(decision.limitPrice).toBeCloseTo(0.415, 2);
+  });
+});
+
 describe('decideAccumulatorEntry - take-profit exits', () => {
   it('sells YES when held at a profit', () => {
     const position: Position = { yesQty: 5, noQty: 0, avgYesPrice: 0.30, avgNoPrice: 0 };
