@@ -134,6 +134,8 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         decisions.push(accDecision);
         break;
       }
+
+      logger.write({ eventType: 'accumulator_skip', marketId: market.conditionId, reason: accDecision.reason });
     }
 
     if (decisions.length === 0) {

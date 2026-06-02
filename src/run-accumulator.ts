@@ -167,7 +167,6 @@ async function main(): Promise<void> {
       }
 
       const orderbooks = await resolveOrderbooks(markets);
-      console.log(`[accumulator] fetched ${orderbooks.size} orderbooks`);
 
       const result = await runAccumulatorCycle({
         marketScanner,

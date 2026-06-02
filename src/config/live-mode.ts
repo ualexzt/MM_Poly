@@ -38,7 +38,7 @@ const PAPER_RISK: RiskConfig = {
 const SMALL_LIVE_ACCUMULATOR: AccumulatorConfig = {
   targetPairCost: 0.98,
   tradeSize: 2,
-  maxUnhedgedDelta: 2,
+  maxUnhedgedDelta: 5,
   minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 2,
   minOrderNotionalUsd: 1,
