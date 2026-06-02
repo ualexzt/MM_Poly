@@ -1,5 +1,14 @@
-import { runGabagoolCycle, assertGabagoolModeAllowed, CycleDeps, MarketCandidate } from '../../src/run-micro-gabagool';
+import {
+  runGabagoolCycle,
+  assertGabagoolModeAllowed,
+  createGabagoolRuntimeFromEnv,
+  createJsonlEventWriter,
+  CycleDeps,
+  MarketCandidate,
+} from '../../src/run-micro-gabagool';
 import { DEFAULT_CONFIG } from '../../src/strategy/micro-gabagool-config';
+
+const packageJson = require('../../package.json');
 import { MicroGabagoolRiskManager } from '../../src/risk/micro-gabagool-risk-manager';
 import { MicroGabagoolOrderManager } from '../../src/execution/micro-gabagool-order-manager';
 import { MicroGabagoolPnlTracker } from '../../src/accounting/micro-gabagool-pnl-tracker';
@@ -146,6 +155,76 @@ describe('micro gabagool integration', () => {
     expect(() => assertGabagoolModeAllowed('live', false)).toThrow('Live mode requires');
     expect(() => assertGabagoolModeAllowed('live', true)).not.toThrow();
     expect(() => assertGabagoolModeAllowed('paper', false)).not.toThrow();
+  });
+
+  it('should expose package script for gabagool runner', () => {
+    expect(packageJson.scripts['start:gabagool']).toBe('tsx src/run-micro-gabagool.ts');
+  });
+
+  it('should create default gabagool runtime from env safely in paper mode', () => {
+    const runtime = createGabagoolRuntimeFromEnv({});
+
+    expect(runtime.config.mode).toBe('paper');
+    expect(runtime.config.enableLiveTrading).toBe(false);
+    expect(runtime.logPath).toContain('logs/micro-gabagool-');
+    expect(runtime.logPath).toMatch(/\.jsonl$/);
+    expect(runtime.intervalMs).toBeGreaterThan(0);
+    expect(typeof runtime.scanner.scan).toBe('function');
+    expect(runtime.orderManager).toBeInstanceOf(MicroGabagoolOrderManager);
+    expect(runtime.riskManager).toBeInstanceOf(MicroGabagoolRiskManager);
+    expect(runtime.pnlTracker).toBeInstanceOf(MicroGabagoolPnlTracker);
+    expect(runtime.paperEngine).toBeDefined();
+    expect(typeof runtime.writeEvent).toBe('function');
+    expect(typeof runtime.nowMs()).toBe('number');
+  });
+
+  it('should reject live runtime unless explicitly enabled', () => {
+    expect(() => createGabagoolRuntimeFromEnv({ MODE: 'live' })).toThrow('Live mode requires');
+  });
+
+  it('should allow live config with explicit opt-in without requiring a live order submitter', () => {
+    const runtime = createGabagoolRuntimeFromEnv({ MODE: 'live', ENABLE_LIVE_TRADING: 'true' });
+
+    expect(runtime.config.mode).toBe('live');
+    expect(runtime.config.enableLiveTrading).toBe(true);
+    expect(runtime.orderManager).toBeInstanceOf(MicroGabagoolOrderManager);
+  });
+
+  it('should parse gabagool live-data env overrides', () => {
+    const runtime = createGabagoolRuntimeFromEnv({
+      GABAGOOL_SCAN_INTERVAL_MS: '12345',
+      GABAGOOL_MAX_MARKETS_PER_SCAN: '17',
+      GAMMA_API_BASE_URL: 'https://gamma.test/',
+      CLOB_API_BASE_URL: 'https://clob.test/',
+    });
+
+    expect(runtime.intervalMs).toBe(12345);
+    expect((runtime.scanner as unknown as { gammaBaseUrl: string; maxMarketsPerScan: number }).gammaBaseUrl).toBe('https://gamma.test');
+    expect((runtime.scanner as unknown as { maxMarketsPerScan: number }).maxMarketsPerScan).toBe(17);
+    const orderbookClient = (runtime.scanner as unknown as { orderbookClient: { baseUrl: string } }).orderbookClient;
+    expect(orderbookClient.baseUrl).toBe('https://clob.test');
+  });
+
+  it('should write JSONL events with injected append function', () => {
+    const appended: Array<{ path: string; line: string }> = [];
+    const writer = createJsonlEventWriter('logs/test.jsonl', (path, line) => {
+      appended.push({ path, line });
+    });
+
+    writer({ eventType: 'startup', timestamp: 123 });
+
+    expect(appended).toEqual([{ path: 'logs/test.jsonl', line: '{"eventType":"startup","timestamp":123}\n' }]);
+  });
+
+  it('should not throw when JSONL append fails', () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const writer = createJsonlEventWriter('logs/test.jsonl', () => {
+      throw new Error('disk full');
+    });
+
+    expect(() => writer({ eventType: 'startup' })).not.toThrow();
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 
   it('should select highest scoring market', async () => {

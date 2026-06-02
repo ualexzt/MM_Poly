@@ -1,3 +1,6 @@
+import 'dotenv/config';
+import { appendFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { MicroGabagoolConfig, DEFAULT_CONFIG } from './strategy/micro-gabagool-config';
 import { computeOpportunityScore } from './engines/micro-gabagool-scorer';
 import { passesMarketFilters } from './strategy/micro-gabagool-filters';
@@ -5,6 +8,9 @@ import { MicroGabagoolRiskManager } from './risk/micro-gabagool-risk-manager';
 import { MicroGabagoolOrderManager } from './execution/micro-gabagool-order-manager';
 import { MicroGabagoolPnlTracker } from './accounting/micro-gabagool-pnl-tracker';
 import { MicroGabagoolPaperEngine } from './simulation/micro-gabagool-paper-engine';
+import { MicroGabagoolClobOrderbookClient } from './data/micro-gabagool-clob-orderbook-client';
+import { GammaMicroGabagoolScanner } from './strategy/gamma-micro-gabagool-scanner';
+import { TelegramNotifier } from './notifier/telegram';
 
 export interface MarketCandidate {
   conditionId: string;
@@ -28,6 +34,119 @@ export interface CycleDeps {
   paperEngine?: MicroGabagoolPaperEngine;
   writeEvent: (event: Record<string, unknown>) => void;
   nowMs: () => number;
+}
+
+export interface GabagoolRuntime extends Required<CycleDeps> {
+  logPath: string;
+  intervalMs: number;
+}
+
+export type JsonlAppendFn = (path: string, line: string) => void;
+
+const DEFAULT_SCAN_INTERVAL_MS = 30_000;
+const DEFAULT_MAX_MARKETS_PER_SCAN = 100;
+const DEFAULT_GAMMA_API_BASE_URL = 'https://gamma-api.polymarket.com';
+const DEFAULT_CLOB_API_BASE_URL = 'https://clob.polymarket.com';
+const SAFE_PAPER_FILL_PROBABILITY = 0;
+const SAFE_PAPER_PARTIAL_FILL_PROBABILITY = 0;
+const SAFE_PAPER_LATE_FILL_PROBABILITY = 0;
+
+function parsePositiveInteger(value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.floor(parsed);
+}
+
+function defaultJsonlAppend(path: string, line: string): void {
+  mkdirSync(dirname(path), { recursive: true });
+  appendFileSync(path, line, { encoding: 'utf8' });
+}
+
+export function createJsonlEventWriter(
+  logPath: string,
+  append: JsonlAppendFn = defaultJsonlAppend,
+): (event: Record<string, unknown>) => void {
+  return (event: Record<string, unknown>) => {
+    try {
+      append(logPath, `${JSON.stringify(event)}\n`);
+    } catch (error) {
+      console.error('micro_gabagool JSONL append failed:', error);
+    }
+  };
+}
+
+export function createGabagoolRuntimeFromEnv(env: NodeJS.ProcessEnv = process.env): GabagoolRuntime {
+  const mode: MicroGabagoolConfig['mode'] = env.MODE === 'live' ? 'live' : 'paper';
+  const enableLiveTrading = env.ENABLE_LIVE_TRADING === 'true';
+  assertGabagoolModeAllowed(mode, enableLiveTrading);
+
+  const config: MicroGabagoolConfig = {
+    ...DEFAULT_CONFIG,
+    mode,
+    enableLiveTrading,
+  };
+  const nowMs = () => Date.now();
+  const intervalMs = parsePositiveInteger(env.GABAGOOL_SCAN_INTERVAL_MS, DEFAULT_SCAN_INTERVAL_MS);
+  const maxMarketsPerScan = parsePositiveInteger(env.GABAGOOL_MAX_MARKETS_PER_SCAN, DEFAULT_MAX_MARKETS_PER_SCAN);
+  const gammaBaseUrl = env.GAMMA_API_BASE_URL ?? DEFAULT_GAMMA_API_BASE_URL;
+  const clobBaseUrl = env.CLOB_API_BASE_URL ?? DEFAULT_CLOB_API_BASE_URL;
+  const logPath = env.GABAGOOL_LOG_PATH
+    ?? `logs/micro-gabagool-${new Date(nowMs()).toISOString().slice(0, 10)}.jsonl`;
+
+  const orderbookClient = new MicroGabagoolClobOrderbookClient({ baseUrl: clobBaseUrl });
+  const scanner = new GammaMicroGabagoolScanner({
+    gammaBaseUrl,
+    maxMarketsPerScan,
+    nowMs,
+  }, orderbookClient);
+  let simulatedOrderSeq = 0;
+  const orderManager = new MicroGabagoolOrderManager({
+    placeOrder: async () => {
+      if (config.mode === 'live') {
+        throw new Error('Live order placement is not implemented for micro_gabagool MVP');
+      }
+      simulatedOrderSeq += 1;
+      return { orderId: `paper-gabagool-${simulatedOrderSeq}` };
+    },
+    cancelOrder: async () => true,
+    getOrderStatus: async () => ({ status: 'OPEN', filledSizeUsd: 0 }),
+    nowMs,
+  });
+  const riskManager = new MicroGabagoolRiskManager({
+    maxDailyLossUsd: config.maxDailyLossUsd,
+    maxTotalExposureUsd: config.maxTotalExposureUsd,
+    maxPositionPerMarketUsd: config.maxPositionPerMarketUsd,
+    maxActiveMarkets: config.maxActiveMarkets,
+    consecutiveLossLimit: config.consecutiveLossLimit,
+    marketCooldownAfterLossMinutes: config.marketCooldownAfterLossMinutes,
+    marketCooldownAfterTwoBadExitsMinutes: config.marketCooldownAfterTwoBadExitsMinutes,
+  }, nowMs());
+  const pnlTracker = new MicroGabagoolPnlTracker({
+    gasPerRoundtripEstimateUsd: config.gasPerRoundtripEstimateUsd,
+    makerRebateRate: config.makerRebateRate,
+    initialBalanceUsd: config.initialBalanceUsd,
+  }, nowMs());
+  const paperEngine = new MicroGabagoolPaperEngine({
+    gasPerRoundtripEstimateUsd: config.gasPerRoundtripEstimateUsd,
+    makerRebateRate: config.makerRebateRate,
+    fillProbability: SAFE_PAPER_FILL_PROBABILITY,
+    partialFillProbability: SAFE_PAPER_PARTIAL_FILL_PROBABILITY,
+    lateFillProbability: SAFE_PAPER_LATE_FILL_PROBABILITY,
+  }, nowMs);
+
+  return {
+    config,
+    logPath,
+    intervalMs,
+    scanner,
+    orderManager,
+    riskManager,
+    pnlTracker,
+    paperEngine,
+    writeEvent: createJsonlEventWriter(logPath),
+    nowMs,
+  };
 }
 
 export async function runGabagoolCycle(deps: CycleDeps): Promise<void> {
@@ -186,4 +305,47 @@ export function assertGabagoolModeAllowed(mode: MicroGabagoolConfig['mode'], ena
   if (mode === 'live' && !enableLiveTrading) {
     throw new Error('Live mode requires enable_live_trading: true');
   }
+}
+
+export async function main(): Promise<void> {
+  const runtime = createGabagoolRuntimeFromEnv();
+  runtime.writeEvent({
+    eventType: 'startup',
+    mode: runtime.config.mode,
+    enableLiveTrading: runtime.config.enableLiveTrading,
+    intervalMs: runtime.intervalMs,
+    timestamp: runtime.nowMs(),
+  });
+
+  if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_CHAT_ID) {
+    const telegram = new TelegramNotifier({
+      botToken: process.env.TELEGRAM_BOT_TOKEN,
+      chatId: process.env.TELEGRAM_CHAT_ID,
+    });
+    await telegram.sendMessage(
+      `micro_gabagool runner started in ${runtime.config.mode} mode (live enabled: ${runtime.config.enableLiveTrading})`,
+    );
+  }
+
+  const runCycleSafely = async () => {
+    try {
+      await runGabagoolCycle(runtime);
+    } catch (error) {
+      runtime.writeEvent({
+        eventType: 'cycle_error',
+        error: String(error),
+        timestamp: runtime.nowMs(),
+      });
+      console.error('micro_gabagool cycle failed:', error);
+    }
+  };
+
+  await runCycleSafely();
+  setInterval(() => {
+    void runCycleSafely();
+  }, runtime.intervalMs);
+}
+
+if (require.main === module) {
+  void main();
 }
