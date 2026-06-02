@@ -9,8 +9,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "generate:clob-key": "tsx src/scripts/generate-clob-api-key.ts",
-    "start:pair-cost": "tsx src/run-pair-cost.ts",
-    "start:accumulator": "tsx src/run-accumulator.ts"
+    "start:pair-cost": "tsx src/run-pair-cost.ts"
   },
   "dependencies": {
     "@polymarket/clob-client-v2": "^1.0.6",
