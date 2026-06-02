@@ -6,7 +6,7 @@ import { RiskConfig } from '../../src/risk/pair-cost-risk';
 import { runAccumulatorCycle } from '../../src/strategy/accumulator-runner';
 
 const ACCUMULATOR_CONFIG: AccumulatorConfig = {
-  maxPairCost: 0.98,
+  maxPairCost: 1.03,
   minEdgeBps: 100,
   maxExposurePerMarketUsd: 5,
   limitOrderOffsetCents: 1,

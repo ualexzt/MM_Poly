@@ -6,7 +6,7 @@ import {
 } from '../../src/engines/accumulator';
 
 const DEFAULT_CONFIG: AccumulatorConfig = {
-  maxPairCost: 0.98,
+  maxPairCost: 1.03,
   minEdgeBps: 100,
   maxExposurePerMarketUsd: 5,
   limitOrderOffsetCents: 1,
@@ -61,9 +61,9 @@ describe('decideAccumulatorEntry', () => {
     });
 
     it('skips when both sides are too expensive', () => {
-      const yesBook = makeBook({ bestAsk: 0.55, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.55, bestAskSizeUsd: 100 });
-      // pair cost = (0.55+0.55) = 1.10 > maxPairCost 0.98
+      const yesBook = makeBook({ bestAsk: 0.60, bestAskSizeUsd: 100 });
+      const noBook = makeBook({ bestAsk: 0.50, bestAskSizeUsd: 100 });
+      // pair cost = (0.60+0.50) = 1.10 > maxPairCost 1.03
       const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
 
       expect(decision.side).toBe('SKIP');
@@ -83,7 +83,7 @@ describe('decideAccumulatorEntry', () => {
       const position: Position = { yesQty: 10, noQty: 0, avgYesPrice: 0.42, avgNoPrice: 0 };
       const yesBook = makeBook({ bestAsk: 0.50 });
       const noBook = makeBook({ bestAsk: 0.50, bestAskSizeUsd: 100 });
-      // avgPairCost would be 0.42 + 0.50 = 0.92 < 0.98 → buy NO
+      // avgPairCost would be 0.42 + 0.50 = 0.92 < 1.03 → buy NO
       const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
       expect(decision.side).toBe('NO');
@@ -94,7 +94,7 @@ describe('decideAccumulatorEntry', () => {
       const position: Position = { yesQty: 0, noQty: 10, avgYesPrice: 0, avgNoPrice: 0.45 };
       const yesBook = makeBook({ bestAsk: 0.48, bestAskSizeUsd: 100 });
       const noBook = makeBook({ bestAsk: 0.55 });
-      // avgPairCost would be 0.48 + 0.45 = 0.93 < 0.98 → buy YES
+      // avgPairCost would be 0.48 + 0.45 = 0.93 < 1.03 → buy YES
       const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
       expect(decision.side).toBe('YES');
@@ -103,8 +103,8 @@ describe('decideAccumulatorEntry', () => {
     it('skips when other side is too expensive to complete pair', () => {
       const position: Position = { yesQty: 10, noQty: 0, avgYesPrice: 0.42, avgNoPrice: 0 };
       const yesBook = makeBook({ bestAsk: 0.55 });
-      const noBook = makeBook({ bestAsk: 0.60, bestAskSizeUsd: 100 });
-      // avgPairCost would be 0.42 + 0.60 = 1.02 > 0.98 → skip
+      const noBook = makeBook({ bestAsk: 0.65, bestAskSizeUsd: 100 });
+      // avgPairCost would be 0.42 + 0.65 = 1.07 > 1.03 → skip
       const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
       expect(decision.side).toBe('SKIP');

@@ -73,7 +73,7 @@ Profit = $1 - avgYesPrice - avgNoPrice
 
 ```typescript
 {
-  maxPairCost: 0.98,           // target: pair must cost < this
+  maxPairCost: 1.03,           // target: pair must cost < this
   minEdgeBps: 100,             // 1% minimum edge
   maxExposureUsd: 12,          // keep $3 reserve
   maxExposurePerMarketUsd: 5,  // $5 per market max
