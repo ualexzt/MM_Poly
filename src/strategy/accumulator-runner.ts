@@ -34,6 +34,7 @@ export interface AccumulatorCycleInput {
   currentBalanceUsd: number;
   tracker: PositionTracker;
   getOrderbooks(): Map<string, { yes: BookState; no: BookState }>;
+  nowMs?: () => number;
 }
 
 export interface CycleResult {
@@ -50,6 +51,11 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
   const decisions: Array<AccumulatorDecision | EqualizerDecision> = [];
 
   try {
+    const now = input.nowMs ? input.nowMs() : Date.now();
+    for (const closed of tracker.closeExpiredPositions(now)) {
+      logger.write({ eventType: 'market_expired', ...closed });
+    }
+
     const allMarkets = await marketScanner.fetchMarkets();
     const markets = allMarkets.filter(m => m.active && !m.closed && m.enableOrderBook && m.yesTokenId && m.noTokenId);
 
@@ -61,6 +67,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       const books = orderbooks.get(market.conditionId);
       if (!books) continue;
 
+      const marketEndMs = market.endDate ? Date.parse(market.endDate) : undefined;
       const existing = tracker.getPosition(market.conditionId);
       const pos: Position = existing
         ? {
@@ -94,7 +101,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
           const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
           const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares });
           if (result.status === 'LIVE' && result.orderId) {
-            tracker.updateFill(market.conditionId, eqDecision.side, eqDecision.limitPrice, eqDecision.sizeShares);
+            tracker.updateFill(market.conditionId, eqDecision.side, eqDecision.limitPrice, eqDecision.sizeShares, marketEndMs);
           }
           logger.write({ eventType: 'equalizer_rebalance', marketId: market.conditionId, ...eqDecision, orderId: result.orderId });
           decisions.push(eqDecision);
@@ -111,7 +118,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
         const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares });
         if (result.status === 'LIVE' && result.orderId) {
-          tracker.updateFill(market.conditionId, accDecision.side, accDecision.limitPrice, accDecision.sizeShares);
+          tracker.updateFill(market.conditionId, accDecision.side, accDecision.limitPrice, accDecision.sizeShares, marketEndMs);
         }
         logger.write({ eventType: 'accumulator_entry', marketId: market.conditionId, ...accDecision, orderId: result.orderId });
         decisions.push(accDecision);

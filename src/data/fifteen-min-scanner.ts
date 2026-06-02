@@ -2,22 +2,26 @@ import { MarketState } from '../types/market';
 
 const COINS = ['btc', 'eth'];
 const INTERVAL_SECONDS = 900; // 15 minutes
+const DEFAULT_SETTLEMENT_BUFFER_SECONDS = 120;
 
 export interface FifteenMinMarketScannerConfig {
   gammaBaseUrl: string;
   coins?: string[];
   nowMs?: () => number;
+  settlementBufferSeconds?: number;
 }
 
 export class FifteenMinMarketScanner {
   private gammaBaseUrl: string;
   private coins: string[];
   private nowMs: () => number;
+  private settlementBufferSeconds: number;
 
   constructor(config: FifteenMinMarketScannerConfig) {
     this.gammaBaseUrl = config.gammaBaseUrl;
     this.coins = config.coins || COINS;
     this.nowMs = config.nowMs || (() => Date.now());
+    this.settlementBufferSeconds = config.settlementBufferSeconds ?? DEFAULT_SETTLEMENT_BUFFER_SECONDS;
   }
 
   /**
@@ -42,11 +46,20 @@ export class FifteenMinMarketScanner {
    */
   async fetchMarkets(): Promise<MarketState[]> {
     for (const slug of this.generateSlugs()) {
+      if (this.isWithinSettlementBuffer(slug)) continue;
       const market = await this.fetchMarketBySlug(slug);
       if (market) return [market];
     }
 
     return [];
+  }
+
+  private isWithinSettlementBuffer(slug: string): boolean {
+    const startTimestamp = Number(slug.split('-').pop());
+    if (!Number.isFinite(startTimestamp)) return true;
+
+    const endMs = (startTimestamp + INTERVAL_SECONDS) * 1000;
+    return endMs - this.nowMs() <= this.settlementBufferSeconds * 1000;
   }
 
   private async fetchMarketBySlug(slug: string): Promise<MarketState | null> {

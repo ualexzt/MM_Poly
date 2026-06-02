@@ -102,6 +102,7 @@ function makeHarness(options: { markets?: MarketState[]; orderbooks?: Map<string
       currentBalanceUsd: options.balance ?? 15,
       tracker: options.tracker ?? new PositionTracker(),
       getOrderbooks: () => orderbooks,
+      nowMs: () => 500,
     },
   };
 }
@@ -159,6 +160,34 @@ describe('runAccumulatorCycle', () => {
       noQty: 2,
       avgNoPrice: 0.70,
     });
+  });
+
+  it('closes expired positions before risk check so new 15-minute market can trade', async () => {
+    const tracker = new PositionTracker();
+    tracker.updateFill('expired', 'YES', 0.45, 10, 1_000);
+    tracker.updateFill('expired', 'NO', 0.50, 10, 1_000);
+    const { input } = makeHarness({ tracker });
+    input.nowMs = () => 1_001;
+
+    const result = await runAccumulatorCycle(input);
+
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'market_expired',
+      marketId: 'expired',
+      exposureUsd: 9.5,
+    }));
+    expect(tracker.getPosition('expired')).toBeNull();
+    expect(result.decisions).toHaveLength(1);
+    expect(input.orderManager.placeLimitOrder).toHaveBeenCalled();
+  });
+
+  it('stores current market end time with paper fills', async () => {
+    const market = makeMarket({ endDate: new Date(2_000).toISOString() });
+    const { input } = makeHarness({ markets: [market] });
+
+    await runAccumulatorCycle(input);
+
+    expect(input.tracker.getPosition('cid-1')?.marketEndMs).toBe(2_000);
   });
 
   it('skips when risk check fails', async () => {

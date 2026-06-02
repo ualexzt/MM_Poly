@@ -91,4 +91,26 @@ describe('PositionTracker', () => {
 
     expect(tracker.getTotalExposureUsd()).toBeCloseTo(11.50);
   });
+
+  it('closes expired 15-minute market positions and releases exposure', () => {
+    const tracker = new PositionTracker();
+    tracker.updateFill('expired', 'YES', 0.45, 2, 1_000);
+    tracker.updateFill('expired', 'NO', 0.50, 2, 1_000);
+    tracker.updateFill('active', 'YES', 0.40, 2, 10_000);
+
+    const closed = tracker.closeExpiredPositions(1_001);
+
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatchObject({
+      marketId: 'expired',
+      yesQty: 2,
+      noQty: 2,
+      pairCost: 0.95,
+      exposureUsd: 1.9,
+    });
+    expect(closed[0].lockedProfitUsd).toBeCloseTo(0.1);
+    expect(tracker.getPosition('expired')).toBeNull();
+    expect(tracker.getPosition('active')).not.toBeNull();
+    expect(tracker.getTotalExposureUsd()).toBeCloseTo(0.8);
+  });
 });

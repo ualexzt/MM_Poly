@@ -38,6 +38,39 @@ describe('FifteenMinMarketScanner', () => {
       jest.restoreAllMocks();
     });
 
+    it('skips a market inside settlement buffer and selects next interval', async () => {
+      const fetchMock = jest.spyOn(global, 'fetch' as any).mockImplementation(async (...args: unknown[]) => {
+        const url = String(args[0]);
+        const slug = url.split('slug=')[1];
+        return {
+          ok: true,
+          json: async () => [{
+            title: slug,
+            markets: [{
+              id: `${slug}-id`,
+              conditionId: `${slug}-condition`,
+              question: slug,
+              clobTokenIds: JSON.stringify([`${slug}-yes`, `${slug}-no`]),
+              volume24hr: '100',
+              liquidity: '50',
+            }],
+          }],
+        } as any;
+      });
+
+      const scanner = new FifteenMinMarketScanner({
+        gammaBaseUrl: 'https://gamma-api.polymarket.com',
+        nowMs: () => 1_780_391_650_000, // 50s before 1780391700 expiry
+        settlementBufferSeconds: 120,
+      });
+
+      const markets = await scanner.fetchMarkets();
+
+      expect(markets).toHaveLength(1);
+      expect(markets[0].slug).toBe('btc-updown-15m-1780391700');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it('returns only the first suitable market, preserving original one-market-at-a-time behavior', async () => {
       const fetchMock = jest.spyOn(global, 'fetch' as any).mockImplementation(async (...args: unknown[]) => {
         const url = String(args[0]);
