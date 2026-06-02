@@ -35,6 +35,7 @@ export interface AccumulatorCycleInput {
   tracker: PositionTracker;
   getOrderbooks(): Map<string, { yes: BookState; no: BookState }>;
   nowMs?: () => number;
+  recordFillOnOrderPlacement?: boolean;
 }
 
 export interface CycleResult {
@@ -47,6 +48,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
     accumulatorConfig, equalizerConfig, riskConfig,
     currentBalanceUsd, tracker, getOrderbooks,
   } = input;
+  const recordFillOnOrderPlacement = input.recordFillOnOrderPlacement ?? true;
 
   const decisions: Array<AccumulatorDecision | EqualizerDecision> = [];
 
@@ -100,7 +102,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         if (eqDecision.side !== 'BALANCED') {
           const tokenId = eqDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
           const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: eqDecision.limitPrice, size: eqDecision.sizeShares });
-          if (result.status === 'LIVE' && result.orderId) {
+          if (recordFillOnOrderPlacement && result.status === 'LIVE' && result.orderId) {
             tracker.updateFill(market.conditionId, eqDecision.side, eqDecision.limitPrice, eqDecision.sizeShares, marketEndMs);
           }
           logger.write({ eventType: 'equalizer_rebalance', marketId: market.conditionId, ...eqDecision, orderId: result.orderId });
@@ -117,7 +119,7 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       if (accDecision.side !== 'SKIP') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
         const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares });
-        if (result.status === 'LIVE' && result.orderId) {
+        if (recordFillOnOrderPlacement && result.status === 'LIVE' && result.orderId) {
           tracker.updateFill(market.conditionId, accDecision.side, accDecision.limitPrice, accDecision.sizeShares, marketEndMs);
         }
         logger.write({ eventType: 'accumulator_entry', marketId: market.conditionId, ...accDecision, orderId: result.orderId });

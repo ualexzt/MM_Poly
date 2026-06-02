@@ -103,6 +103,7 @@ function makeHarness(options: { markets?: MarketState[]; orderbooks?: Map<string
       tracker: options.tracker ?? new PositionTracker(),
       getOrderbooks: () => orderbooks,
       nowMs: () => 500,
+      recordFillOnOrderPlacement: true,
     },
   };
 }
@@ -131,6 +132,17 @@ describe('runAccumulatorCycle', () => {
       sizeShares: 2,
       sizeUsd: 0.84,
     }));
+  });
+
+  it('does not record fill on order placement when configured for live execution', async () => {
+    const { input } = makeHarness();
+    input.recordFillOnOrderPlacement = false;
+
+    const result = await runAccumulatorCycle(input);
+
+    expect(result.decisions).toHaveLength(1);
+    expect(input.orderManager.placeLimitOrder).toHaveBeenCalledTimes(1);
+    expect(input.tracker.getPosition('cid-1')).toBeNull();
   });
 
   it('prioritizes equalizer when existing position is imbalanced', async () => {
