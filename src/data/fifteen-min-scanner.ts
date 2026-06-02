@@ -1,35 +1,36 @@
 import { MarketState } from '../types/market';
 
-const COINS = ['btc', 'eth', 'sol', 'xrp'];
+const COINS = ['btc', 'eth'];
 const INTERVAL_SECONDS = 900; // 15 minutes
 
 export interface FifteenMinMarketScannerConfig {
   gammaBaseUrl: string;
   coins?: string[];
+  nowMs?: () => number;
 }
 
 export class FifteenMinMarketScanner {
   private gammaBaseUrl: string;
   private coins: string[];
+  private nowMs: () => number;
 
   constructor(config: FifteenMinMarketScannerConfig) {
     this.gammaBaseUrl = config.gammaBaseUrl;
     this.coins = config.coins || COINS;
+    this.nowMs = config.nowMs || (() => Date.now());
   }
 
   /**
-   * Generate current and upcoming 15-minute market slugs.
-   * Returns slugs for current interval and next interval.
+   * Original Gabagool universe: BTC first, then ETH 15-minute up/down markets.
+   * Generate current interval and the next interval for each asset.
    */
   generateSlugs(): string[] {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Math.floor(this.nowMs() / 1000);
     const currentInterval = Math.floor(now / INTERVAL_SECONDS) * INTERVAL_SECONDS;
     const slugs: string[] = [];
 
     for (const coin of this.coins) {
-      // Current interval
       slugs.push(`${coin}-updown-15m-${currentInterval}`);
-      // Next interval (upcoming)
       slugs.push(`${coin}-updown-15m-${currentInterval + INTERVAL_SECONDS}`);
     }
 
@@ -37,49 +38,55 @@ export class FifteenMinMarketScanner {
   }
 
   /**
-   * Fetch all active 15-minute markets.
+   * Fetch the first available 15-minute market, preserving original one-market-at-a-time behavior.
    */
   async fetchMarkets(): Promise<MarketState[]> {
-    const slugs = this.generateSlugs();
-    const markets: MarketState[] = [];
+    for (const slug of this.generateSlugs()) {
+      const market = await this.fetchMarketBySlug(slug);
+      if (market) return [market];
+    }
 
-    const fetches = slugs.map(async (slug) => {
-      try {
-        const resp = await fetch(`${this.gammaBaseUrl}/events?slug=${slug}`);
-        if (!resp.ok) return;
+    return [];
+  }
 
-        const data = await resp.json();
-        if (!data || data.length === 0) return;
+  private async fetchMarketBySlug(slug: string): Promise<MarketState | null> {
+    try {
+      const resp = await fetch(`${this.gammaBaseUrl}/events?slug=${slug}`);
+      if (!resp.ok) return null;
 
-        const event = data[0];
-        if (!event.markets || event.markets.length === 0) return;
+      const data = await resp.json();
+      if (!data || data.length === 0) return null;
 
-        for (const m of event.markets) {
-          const tokenIds = m.clobTokenIds ? JSON.parse(m.clobTokenIds) : [];
-          if (tokenIds.length < 2) continue;
+      const event = data[0];
+      if (!event.markets || event.markets.length === 0) return null;
 
-          markets.push({
-            conditionId: m.conditionId || m.id,
-            slug: slug,
-            question: m.question || event.title || slug,
-            yesTokenId: tokenIds[0],
-            noTokenId: tokenIds[1],
-            active: true,
-            closed: false,
-            enableOrderBook: true,
-            feesEnabled: true,
-            volume24hUsd: parseFloat(m.volume24hr || '0'),
-            liquidityUsd: parseFloat(m.liquidity || '0'),
-            oracleAmbiguityScore: 0,
-            feeRate: 0,
-          });
-        }
-      } catch {
-        // skip failed fetches
-      }
-    });
+      const m = event.markets[0];
+      const tokenIds = m.clobTokenIds ? JSON.parse(m.clobTokenIds) : [];
+      if (tokenIds.length < 2) return null;
 
-    await Promise.all(fetches);
-    return markets;
+      const startTimestamp = Number(slug.split('-').pop());
+      const endDate = Number.isFinite(startTimestamp)
+        ? new Date((startTimestamp + INTERVAL_SECONDS) * 1000).toISOString()
+        : undefined;
+
+      return {
+        conditionId: m.conditionId || m.id,
+        slug,
+        question: m.question || event.title || slug,
+        yesTokenId: tokenIds[0],
+        noTokenId: tokenIds[1],
+        active: m.active ?? true,
+        closed: m.closed ?? false,
+        enableOrderBook: m.enableOrderBook ?? true,
+        feesEnabled: m.feesEnabled ?? true,
+        endDate,
+        volume24hUsd: parseFloat(m.volume24hr || '0'),
+        liquidityUsd: parseFloat(m.liquidity || '0'),
+        oracleAmbiguityScore: 0,
+        feeRate: 0,
+      };
+    } catch {
+      return null;
+    }
   }
 }

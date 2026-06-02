@@ -10,10 +10,11 @@ import { PositionTracker } from './strategy/position-tracker';
 const SCAN_INTERVAL_MS = 30_000;
 
 const ACCUMULATOR_CONFIG: AccumulatorConfig = {
-  maxPairCost: 1.03,
-  minEdgeBps: 100,
+  targetPairCost: 0.98,
+  tradeSize: 2,
+  maxUnhedgedDelta: 4,
+  minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
 };
 
 const EQUALIZER_CONFIG: EqualizerConfig = {
@@ -64,7 +65,7 @@ async function main(): Promise<void> {
   // Paper mode: no real orders
   const orderManager = {
     placeLimitOrder: async (params: any) => {
-      console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=$${params.size.toFixed(2)}`);
+      console.log(`[paper] would place: ${params.side} ${params.tokenId} @ ${params.price} size=${params.size.toFixed(2)} shares`);
       return { orderId: `paper-${Date.now()}`, status: 'LIVE' as const };
     },
     cancelStaleOrders: async () => [],
@@ -73,7 +74,7 @@ async function main(): Promise<void> {
 
   console.log(`[accumulator] starting in PAPER mode (15-min markets)`);
   console.log(`[accumulator] gamma=${gammaBaseUrl} clob=${clobBaseUrl}`);
-  console.log(`[accumulator] config: maxPairCost=${ACCUMULATOR_CONFIG.maxPairCost} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
+  console.log(`[accumulator] config: targetPairCost=${ACCUMULATOR_CONFIG.targetPairCost} tradeSize=${ACCUMULATOR_CONFIG.tradeSize} maxDelta=${ACCUMULATOR_CONFIG.maxUnhedgedDelta} maxExposure=${RISK_CONFIG.maxExposureUsd}`);
   console.log(`[accumulator] scan interval: ${SCAN_INTERVAL_MS / 1000}s`);
 
   const runCycle = async () => {

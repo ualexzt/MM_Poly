@@ -7,10 +7,11 @@ import { runAccumulatorCycle } from '../../src/strategy/accumulator-runner';
 import { PositionTracker } from '../../src/strategy/position-tracker';
 
 const ACCUMULATOR_CONFIG: AccumulatorConfig = {
-  maxPairCost: 1.03,
-  minEdgeBps: 100,
+  targetPairCost: 0.98,
+  tradeSize: 2,
+  maxUnhedgedDelta: 4,
+  minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
 };
 
 const EQUALIZER_CONFIG: EqualizerConfig = {
@@ -30,8 +31,8 @@ const RISK_CONFIG: RiskConfig = {
 function makeMarket(overrides: Partial<MarketState> = {}): MarketState {
   return {
     conditionId: 'cid-1',
-    slug: 'test-market',
-    question: 'Will X happen?',
+    slug: 'btc-updown-15m-1780390800',
+    question: 'Bitcoin Up or Down',
     yesTokenId: 'yes-1',
     noTokenId: 'no-1',
     active: true,
@@ -46,16 +47,24 @@ function makeMarket(overrides: Partial<MarketState> = {}): MarketState {
   };
 }
 
+function ask(price: number, size: number) {
+  return { price, size, sizeUsd: price * size };
+}
+
 function makeBook(overrides: Partial<BookState> = {}): BookState {
+  const asks = overrides.asks ?? [];
+  const bestAsk = overrides.bestAsk ?? (asks.length > 0 ? asks[0].price : null);
+  const bestAskSizeUsd = overrides.bestAskSizeUsd ?? (asks.length > 0 ? asks[0].sizeUsd : 0);
+
   return {
     tokenId: 'token-1',
     conditionId: 'cid-1',
     bids: [],
-    asks: [],
+    asks,
     bestBid: null,
-    bestAsk: null,
+    bestAsk,
     bestBidSizeUsd: 0,
-    bestAskSizeUsd: 0,
+    bestAskSizeUsd,
     midpoint: null,
     spread: null,
     spreadTicks: null,
@@ -68,148 +77,104 @@ function makeBook(overrides: Partial<BookState> = {}): BookState {
   };
 }
 
-describe('runAccumulatorCycle', () => {
-  it('places accumulator order when opportunity found and no position', async () => {
-    const markets = [makeMarket()];
-    const orderbooks = new Map([
-      ['cid-1', {
-        yes: makeBook({ tokenId: 'yes-1', bestAsk: 0.42, bestAskSizeUsd: 100 }),
-        no: makeBook({ tokenId: 'no-1', bestAsk: 0.52, bestAskSizeUsd: 100 }),
-      }],
-    ]);
+function makeHarness(options: { markets?: MarketState[]; orderbooks?: Map<string, { yes: BookState; no: BookState }>; tracker?: PositionTracker; balance?: number } = {}) {
+  const markets = options.markets ?? [makeMarket()];
+  const orderbooks = options.orderbooks ?? new Map([
+    ['cid-1', {
+      yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.42, 20)] }),
+      no: makeBook({ tokenId: 'no-1', asks: [ask(0.52, 20)] }),
+    }],
+  ]);
 
-    const marketScanner = { fetchMarkets: jest.fn().mockResolvedValue(markets) };
-    const orderbookClient = { fetchBook: jest.fn() };
-    const orderManager = {
-      placeLimitOrder: jest.fn().mockResolvedValue({ orderId: 'o-1', status: 'LIVE' }),
-      cancelStaleOrders: jest.fn().mockResolvedValue([]),
-      getOpenOrders: jest.fn().mockResolvedValue([]),
-    };
-    const logger = { write: jest.fn() };
-    const tracker = new PositionTracker();
-
-    const result = await runAccumulatorCycle({
-      marketScanner,
-      orderbookClient,
-      orderManager,
-      logger,
+  return {
+    input: {
+      marketScanner: { fetchMarkets: jest.fn().mockResolvedValue(markets) },
+      orderbookClient: { fetchBook: jest.fn() },
+      orderManager: {
+        placeLimitOrder: jest.fn().mockResolvedValue({ orderId: 'o-1', status: 'LIVE' }),
+        cancelStaleOrders: jest.fn().mockResolvedValue([]),
+        getOpenOrders: jest.fn().mockResolvedValue([]),
+      },
+      logger: { write: jest.fn() },
       accumulatorConfig: ACCUMULATOR_CONFIG,
       equalizerConfig: EQUALIZER_CONFIG,
       riskConfig: RISK_CONFIG,
-      currentBalanceUsd: 15,
-      tracker,
+      currentBalanceUsd: options.balance ?? 15,
+      tracker: options.tracker ?? new PositionTracker(),
       getOrderbooks: () => orderbooks,
-    });
+    },
+  };
+}
+
+describe('runAccumulatorCycle', () => {
+  it('places one accumulator order, sends share quantity, and records position like original Gabagool', async () => {
+    const { input } = makeHarness();
+
+    const result = await runAccumulatorCycle(input);
 
     expect(result.decisions).toHaveLength(1);
     expect(result.decisions[0].side).toBe('YES');
-    expect(orderManager.placeLimitOrder).toHaveBeenCalledTimes(1);
-    expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
+    expect(input.orderManager.placeLimitOrder).toHaveBeenCalledWith({
+      tokenId: 'yes-1',
+      side: 'BUY',
+      price: 0.42,
+      size: 2,
+    });
+    expect(input.tracker.getPosition('cid-1')).toMatchObject({
+      yesQty: 2,
+      noQty: 0,
+      avgYesPrice: 0.42,
+    });
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'accumulator_entry',
+      sizeShares: 2,
+      sizeUsd: 0.84,
     }));
   });
 
-  it('skips market when already has position', async () => {
-    const markets = [makeMarket()];
-    const orderbooks = new Map([
-      ['cid-1', {
-        yes: makeBook({ tokenId: 'yes-1', bestAsk: 0.42, bestAskSizeUsd: 100 }),
-        no: makeBook({ tokenId: 'no-1', bestAsk: 0.52, bestAskSizeUsd: 100 }),
-      }],
-    ]);
-
-    const marketScanner = { fetchMarkets: jest.fn().mockResolvedValue(markets) };
-    const orderbookClient = { fetchBook: jest.fn() };
-    const orderManager = {
-      placeLimitOrder: jest.fn(),
-      cancelStaleOrders: jest.fn().mockResolvedValue([]),
-      getOpenOrders: jest.fn().mockResolvedValue([]),
-    };
-    const logger = { write: jest.fn() };
+  it('continues accumulating against existing position instead of skipping the market', async () => {
     const tracker = new PositionTracker();
-    tracker.updateFill('cid-1', 'YES', 0.42, 10); // already have position
-
-    const result = await runAccumulatorCycle({
-      marketScanner,
-      orderbookClient,
-      orderManager,
-      logger,
-      accumulatorConfig: ACCUMULATOR_CONFIG,
-      equalizerConfig: EQUALIZER_CONFIG,
-      riskConfig: RISK_CONFIG,
-      currentBalanceUsd: 15,
+    tracker.updateFill('cid-1', 'NO', 0.41, 2);
+    const { input } = makeHarness({
       tracker,
-      getOrderbooks: () => orderbooks,
+      orderbooks: new Map([
+        ['cid-1', {
+          yes: makeBook({ tokenId: 'yes-1', asks: [ask(0.54, 20)] }),
+          no: makeBook({ tokenId: 'no-1', asks: [ask(0.99, 20)] }),
+        }],
+      ]),
     });
 
-    expect(result.decisions).toHaveLength(0);
-    expect(orderManager.placeLimitOrder).not.toHaveBeenCalled();
+    const result = await runAccumulatorCycle(input);
+
+    expect(result.decisions).toHaveLength(1);
+    expect(result.decisions[0].side).toBe('YES');
+    expect(input.orderManager.placeLimitOrder).toHaveBeenCalledWith(expect.objectContaining({
+      tokenId: 'yes-1',
+      price: 0.54,
+      size: 2,
+    }));
   });
 
   it('skips when risk check fails', async () => {
-    const markets = [makeMarket()];
-    const orderbooks = new Map([
-      ['cid-1', {
-        yes: makeBook({ tokenId: 'yes-1', bestAsk: 0.42, bestAskSizeUsd: 100 }),
-        no: makeBook({ tokenId: 'no-1', bestAsk: 0.52, bestAskSizeUsd: 100 }),
-      }],
-    ]);
+    const { input } = makeHarness({ balance: 5 });
 
-    const marketScanner = { fetchMarkets: jest.fn().mockResolvedValue(markets) };
-    const orderbookClient = { fetchBook: jest.fn() };
-    const orderManager = {
-      placeLimitOrder: jest.fn(),
-      cancelStaleOrders: jest.fn().mockResolvedValue([]),
-      getOpenOrders: jest.fn().mockResolvedValue([]),
-    };
-    const logger = { write: jest.fn() };
-    const tracker = new PositionTracker();
+    await runAccumulatorCycle(input);
 
-    const result = await runAccumulatorCycle({
-      marketScanner,
-      orderbookClient,
-      orderManager,
-      logger,
-      accumulatorConfig: ACCUMULATOR_CONFIG,
-      equalizerConfig: EQUALIZER_CONFIG,
-      riskConfig: RISK_CONFIG,
-      currentBalanceUsd: 5,
-      tracker,
-      getOrderbooks: () => orderbooks,
-    });
-
-    expect(orderManager.placeLimitOrder).not.toHaveBeenCalled();
-    expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
+    expect(input.orderManager.placeLimitOrder).not.toHaveBeenCalled();
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'risk_blocked',
     }));
   });
 
   it('logs cycle_error when market fetch fails', async () => {
-    const marketScanner = { fetchMarkets: jest.fn().mockRejectedValue(new Error('timeout')) };
-    const orderbookClient = { fetchBook: jest.fn() };
-    const orderManager = {
-      placeLimitOrder: jest.fn(),
-      cancelStaleOrders: jest.fn().mockResolvedValue([]),
-      getOpenOrders: jest.fn().mockResolvedValue([]),
-    };
-    const logger = { write: jest.fn() };
-    const tracker = new PositionTracker();
+    const { input } = makeHarness();
+    input.marketScanner.fetchMarkets.mockRejectedValue(new Error('timeout'));
 
-    const result = await runAccumulatorCycle({
-      marketScanner,
-      orderbookClient,
-      orderManager,
-      logger,
-      accumulatorConfig: ACCUMULATOR_CONFIG,
-      equalizerConfig: EQUALIZER_CONFIG,
-      riskConfig: RISK_CONFIG,
-      currentBalanceUsd: 15,
-      tracker,
-      getOrderbooks: () => new Map(),
-    });
+    const result = await runAccumulatorCycle(input);
 
     expect(result.decisions).toEqual([]);
-    expect(logger.write).toHaveBeenCalledWith(expect.objectContaining({
+    expect(input.logger.write).toHaveBeenCalledWith(expect.objectContaining({
       eventType: 'cycle_error',
     }));
   });

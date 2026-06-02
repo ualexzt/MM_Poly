@@ -1,10 +1,15 @@
 import { BookState } from '../types/book';
 
 export interface AccumulatorConfig {
-  maxPairCost: number;
-  minEdgeBps: number;
+  /** Original Gabagool target: 1.00 - profit_margin (default 0.98). */
+  targetPairCost: number;
+  /** Order quantity in outcome shares, not USD. */
+  tradeSize: number;
+  /** Maximum absolute delta: yesQty - noQty. */
+  maxUnhedgedDelta: number;
+  /** Opposite side ASK depth must be at least tradeSize * multiplier. */
+  minLiquidityMultiplier: number;
   maxExposurePerMarketUsd: number;
-  limitOrderOffsetCents: number;
 }
 
 export interface Position {
@@ -17,12 +22,46 @@ export interface Position {
 export interface AccumulatorDecision {
   side: 'YES' | 'NO' | 'SKIP';
   limitPrice: number;
+  /** Quantity in outcome shares. */
+  sizeShares: number;
+  /** Notional cost at limitPrice. */
   sizeUsd: number;
+  expectedPairCost: number;
+  reason: string;
+}
+
+interface Opportunity {
+  side: 'YES' | 'NO';
+  price: number;
+  expectedPairCost: number;
   reason: string;
 }
 
 function currentExposureUsd(pos: Position): number {
   return pos.yesQty * pos.avgYesPrice + pos.noQty * pos.avgNoPrice;
+}
+
+function currentDelta(pos: Position): number {
+  return pos.yesQty - pos.noQty;
+}
+
+function askDepthShares(book: BookState, maxLevels = 5): number {
+  return book.asks.slice(0, maxLevels).reduce((sum, level) => sum + level.size, 0);
+}
+
+function hasUsableAsk(book: BookState): boolean {
+  return book.bestAsk !== null && book.asks.length > 0 && book.asks[0].size > 0;
+}
+
+function skip(reason: string): AccumulatorDecision {
+  return {
+    side: 'SKIP',
+    limitPrice: 0,
+    sizeShares: 0,
+    sizeUsd: 0,
+    expectedPairCost: 0,
+    reason,
+  };
 }
 
 export function decideAccumulatorEntry(
@@ -31,12 +70,8 @@ export function decideAccumulatorEntry(
   noBook: BookState,
   config: AccumulatorConfig,
 ): AccumulatorDecision {
-  const skip = (reason: string): AccumulatorDecision => ({
-    side: 'SKIP', limitPrice: 0, sizeUsd: 0, reason,
-  });
-
-  if (yesBook.bestAsk === null || noBook.bestAsk === null) {
-    return skip('missing ask price');
+  if (!hasUsableAsk(yesBook) || !hasUsableAsk(noBook)) {
+    return skip('Incomplete order book, skipping scan');
   }
 
   const exposure = currentExposureUsd(position);
@@ -44,47 +79,65 @@ export function decideAccumulatorEntry(
     return skip('exposure limit reached');
   }
 
+  const askYes = yesBook.bestAsk!;
+  const askNo = noBook.bestAsk!;
+
+  const opportunities: Opportunity[] = [];
+
+  const yesExpectedPairCost = askYes + position.avgNoPrice;
+  if (yesExpectedPairCost < config.targetPairCost) {
+    opportunities.push({
+      side: 'YES',
+      price: askYes,
+      expectedPairCost: yesExpectedPairCost,
+      reason: `ask_yes + avg_no = ${yesExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+    });
+  }
+
+  const noExpectedPairCost = askNo + position.avgYesPrice;
+  if (noExpectedPairCost < config.targetPairCost) {
+    opportunities.push({
+      side: 'NO',
+      price: askNo,
+      expectedPairCost: noExpectedPairCost,
+      reason: `ask_no + avg_yes = ${noExpectedPairCost.toFixed(3)} < target ${config.targetPairCost}`,
+    });
+  }
+
+  if (opportunities.length === 0) {
+    return skip('no opportunity below target pair cost');
+  }
+
+  opportunities.sort((a, b) => a.expectedPairCost - b.expectedPairCost);
+  const best = opportunities[0];
+  const ownBook = best.side === 'YES' ? yesBook : noBook;
+  const oppositeBook = best.side === 'YES' ? noBook : yesBook;
+
   const maxAddUsd = config.maxExposurePerMarketUsd - exposure;
-  const hasYes = position.yesQty > 0;
-  const hasNo = position.noQty > 0;
+  const maxByExposureShares = maxAddUsd / best.price;
+  const sizeShares = Math.min(config.tradeSize, ownBook.asks[0].size, maxByExposureShares);
 
-  // Case 1: Empty position → buy cheaper side
-  if (!hasYes && !hasNo) {
-    const rawPairCost = yesBook.bestAsk + noBook.bestAsk;
-    if (rawPairCost >= config.maxPairCost) {
-      return skip(`pair cost ${rawPairCost.toFixed(3)} >= max ${config.maxPairCost}`);
-    }
-
-    const buyYes = yesBook.bestAsk <= noBook.bestAsk;
-    const side = buyYes ? 'YES' : 'NO';
-    const book = buyYes ? yesBook : noBook;
-    const limitPrice = Math.max(0.01, book.bestAsk! - config.limitOrderOffsetCents / 100);
-    const sizeUsd = Math.min(maxAddUsd, book.bestAskSizeUsd);
-
-    return { side, limitPrice, sizeUsd, reason: `${side} is cheaper (ask=${book.bestAsk!.toFixed(2)})` };
+  if (sizeShares <= 0) {
+    return skip('no remaining exposure or ask size');
   }
 
-  // Case 2: Has one side → try to complete pair
-  if (hasYes && !hasNo) {
-    const wouldBePairCost = position.avgYesPrice + noBook.bestAsk;
-    if (wouldBePairCost >= config.maxPairCost) {
-      return skip(`completing pair would cost ${wouldBePairCost.toFixed(3)} >= max ${config.maxPairCost}`);
-    }
-    const limitPrice = Math.max(0.01, noBook.bestAsk - config.limitOrderOffsetCents / 100);
-    const sizeUsd = Math.min(maxAddUsd, noBook.bestAskSizeUsd, position.yesQty * noBook.bestAsk);
-    return { side: 'NO', limitPrice, sizeUsd, reason: 'complete pair (have YES, need NO)' };
+  const newDelta = currentDelta(position) + (best.side === 'YES' ? sizeShares : -sizeShares);
+  if (Math.abs(newDelta) > config.maxUnhedgedDelta) {
+    return skip(`Delta constraint violated: new_delta=${newDelta.toFixed(3)}, max=${config.maxUnhedgedDelta}`);
   }
 
-  if (!hasYes && hasNo) {
-    const wouldBePairCost = yesBook.bestAsk + position.avgNoPrice;
-    if (wouldBePairCost >= config.maxPairCost) {
-      return skip(`completing pair would cost ${wouldBePairCost.toFixed(3)} >= max ${config.maxPairCost}`);
-    }
-    const limitPrice = Math.max(0.01, yesBook.bestAsk - config.limitOrderOffsetCents / 100);
-    const sizeUsd = Math.min(maxAddUsd, yesBook.bestAskSizeUsd, position.noQty * yesBook.bestAsk);
-    return { side: 'YES', limitPrice, sizeUsd, reason: 'complete pair (have NO, need YES)' };
+  const requiredOppositeLiquidity = sizeShares * config.minLiquidityMultiplier;
+  const availableOppositeLiquidity = askDepthShares(oppositeBook, 5);
+  if (availableOppositeLiquidity < requiredOppositeLiquidity) {
+    return skip(`Liquidity constraint violated: available=${availableOppositeLiquidity.toFixed(3)}, required=${requiredOppositeLiquidity.toFixed(3)}`);
   }
 
-  // Case 3: Has both sides → already paired, skip
-  return skip('already have both sides');
+  return {
+    side: best.side,
+    limitPrice: best.price,
+    sizeShares,
+    sizeUsd: sizeShares * best.price,
+    expectedPairCost: best.expectedPairCost,
+    reason: best.reason,
+  };
 }

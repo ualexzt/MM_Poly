@@ -6,22 +6,27 @@ import {
 } from '../../src/engines/accumulator';
 
 const DEFAULT_CONFIG: AccumulatorConfig = {
-  maxPairCost: 1.03,
-  minEdgeBps: 100,
+  targetPairCost: 0.98,
+  tradeSize: 2,
+  maxUnhedgedDelta: 4,
+  minLiquidityMultiplier: 3,
   maxExposurePerMarketUsd: 5,
-  limitOrderOffsetCents: 1,
 };
 
 function makeBook(overrides: Partial<BookState> = {}): BookState {
+  const asks = overrides.asks ?? [];
+  const bestAsk = overrides.bestAsk ?? (asks.length > 0 ? asks[0].price : null);
+  const bestAskSizeUsd = overrides.bestAskSizeUsd ?? (asks.length > 0 ? asks[0].sizeUsd : 0);
+
   return {
     tokenId: 'token-1',
     conditionId: 'cid-1',
     bids: [],
-    asks: [],
+    asks,
     bestBid: null,
-    bestAsk: null,
+    bestAsk,
     bestBidSizeUsd: 0,
-    bestAskSizeUsd: 0,
+    bestAskSizeUsd,
     midpoint: null,
     spread: null,
     spreadTicks: null,
@@ -34,117 +39,90 @@ function makeBook(overrides: Partial<BookState> = {}): BookState {
   };
 }
 
+function ask(price: number, size: number) {
+  return { price, size, sizeUsd: price * size };
+}
+
 function emptyPosition(): Position {
   return { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
 }
 
-describe('decideAccumulatorEntry', () => {
-  describe('empty position', () => {
-    it('buys YES when it is cheaper', () => {
-      const yesBook = makeBook({ bestAsk: 0.42, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.52, bestAskSizeUsd: 100 });
-      const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
+describe('decideAccumulatorEntry - original Gabagool accumulator', () => {
+  it('buys the side with the lower expected pair cost when both opportunities exist', () => {
+    const yesBook = makeBook({ asks: [ask(0.80, 20)] });
+    const noBook = makeBook({ asks: [ask(0.70, 20)] });
 
-      expect(decision.side).toBe('YES');
-      expect(decision.limitPrice).toBeCloseTo(0.41); // ask - offset
-      expect(decision.sizeUsd).toBeGreaterThan(0);
-      expect(decision.reason).toContain('cheaper');
-    });
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
 
-    it('buys NO when it is cheaper', () => {
-      const yesBook = makeBook({ bestAsk: 0.55, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.40, bestAskSizeUsd: 100 });
-      const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
-
-      expect(decision.side).toBe('NO');
-      expect(decision.limitPrice).toBeCloseTo(0.39);
-    });
-
-    it('skips when both sides are too expensive', () => {
-      const yesBook = makeBook({ bestAsk: 0.60, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.50, bestAskSizeUsd: 100 });
-      // pair cost = (0.60+0.50) = 1.10 > maxPairCost 1.03
-      const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
-
-      expect(decision.side).toBe('SKIP');
-    });
-
-    it('skips when either bestAsk is null', () => {
-      const yesBook = makeBook({ bestAsk: null });
-      const noBook = makeBook({ bestAsk: 0.45 });
-      const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
-
-      expect(decision.side).toBe('SKIP');
-    });
+    expect(decision.side).toBe('NO');
+    expect(decision.limitPrice).toBe(0.70);
+    expect(decision.sizeShares).toBe(2);
+    expect(decision.expectedPairCost).toBe(0.70);
   });
 
-  describe('has one side, needs the other', () => {
-    it('buys NO when already has YES and NO is cheap enough', () => {
-      const position: Position = { yesQty: 10, noQty: 0, avgYesPrice: 0.42, avgNoPrice: 0 };
-      const yesBook = makeBook({ bestAsk: 0.50 });
-      const noBook = makeBook({ bestAsk: 0.50, bestAskSizeUsd: 100 });
-      // avgPairCost would be 0.42 + 0.50 = 0.92 < 1.03 → buy NO
-      const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+  it('uses existing opposite-side average price for opportunity checks', () => {
+    const position: Position = { yesQty: 0, noQty: 2, avgYesPrice: 0, avgNoPrice: 0.41 };
+    const yesBook = makeBook({ asks: [ask(0.54, 20)] });
+    const noBook = makeBook({ asks: [ask(0.99, 20)] });
 
-      expect(decision.side).toBe('NO');
-      expect(decision.reason).toContain('complete pair');
-    });
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
 
-    it('buys YES when already has NO and YES is cheap enough', () => {
-      const position: Position = { yesQty: 0, noQty: 10, avgYesPrice: 0, avgNoPrice: 0.45 };
-      const yesBook = makeBook({ bestAsk: 0.48, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.55 });
-      // avgPairCost would be 0.48 + 0.45 = 0.93 < 1.03 → buy YES
-      const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
-
-      expect(decision.side).toBe('YES');
-    });
-
-    it('skips when other side is too expensive to complete pair', () => {
-      const position: Position = { yesQty: 10, noQty: 0, avgYesPrice: 0.42, avgNoPrice: 0 };
-      const yesBook = makeBook({ bestAsk: 0.55 });
-      const noBook = makeBook({ bestAsk: 0.65, bestAskSizeUsd: 100 });
-      // avgPairCost would be 0.42 + 0.65 = 1.07 > 1.03 → skip
-      const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
-
-      expect(decision.side).toBe('SKIP');
-    });
+    expect(decision.side).toBe('YES');
+    expect(decision.expectedPairCost).toBeCloseTo(0.95);
+    expect(decision.reason).toContain('ask_yes + avg_no');
   });
 
-  describe('has both sides', () => {
-    it('skips when pair cost already good enough', () => {
-      const position: Position = { yesQty: 10, noQty: 10, avgYesPrice: 0.42, avgNoPrice: 0.45 };
-      // avgPairCost = 0.87, already great
-      const yesBook = makeBook({ bestAsk: 0.50 });
-      const noBook = makeBook({ bestAsk: 0.50 });
-      const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+  it('skips when neither side keeps expected pair cost below target', () => {
+    const position: Position = { yesQty: 2, noQty: 2, avgYesPrice: 0.55, avgNoPrice: 0.50 };
+    const yesBook = makeBook({ asks: [ask(0.50, 20)] });
+    const noBook = makeBook({ asks: [ask(0.48, 20)] });
 
-      expect(decision.side).toBe('SKIP');
-    });
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('no opportunity');
   });
 
-  describe('exposure limit', () => {
-    it('skips when adding would exceed per-market limit', () => {
-      const position: Position = { yesQty: 50, noQty: 50, avgYesPrice: 0.42, avgNoPrice: 0.45 };
-      const yesBook = makeBook({ bestAsk: 0.30, bestAskSizeUsd: 100 });
-      const noBook = makeBook({ bestAsk: 0.30, bestAskSizeUsd: 100 });
-      // exposure already ~$43.5, well over $5 limit
-      const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+  it('skips incomplete or empty ask books instead of treating zero as liquidity', () => {
+    const yesBook = makeBook({ asks: [] });
+    const noBook = makeBook({ asks: [ask(0.50, 20)] });
 
-      expect(decision.side).toBe('SKIP');
-      expect(decision.reason).toContain('exposure');
-    });
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('Incomplete order book');
   });
 
-  describe('size calculation', () => {
-    it('sizes order based on available liquidity', () => {
-      const yesBook = makeBook({ bestAsk: 0.45, bestAskSizeUsd: 3 });
-      const noBook = makeBook({ bestAsk: 0.50, bestAskSizeUsd: 100 });
-      const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
+  it('enforces original delta constraint before buying more of an over-weight side', () => {
+    const position: Position = { yesQty: 4, noQty: 0, avgYesPrice: 0.50, avgNoPrice: 0 };
+    const yesBook = makeBook({ asks: [ask(0.20, 20)] });
+    const noBook = makeBook({ asks: [ask(0.99, 20)] });
 
-      expect(decision.side).toBe('YES');
-      // size should be limited by available liquidity ($3) and max exposure ($5)
-      expect(decision.sizeUsd).toBeLessThanOrEqual(5);
-    });
+    const decision = decideAccumulatorEntry(position, yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('Delta constraint');
+  });
+
+  it('requires opposite ask depth at least tradeSize times liquidity multiplier', () => {
+    const yesBook = makeBook({ asks: [ask(0.40, 20)] });
+    const noBook = makeBook({ asks: [ask(0.50, 2), ask(0.51, 1)] }); // 3 shares < 2 * 3
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, DEFAULT_CONFIG);
+
+    expect(decision.side).toBe('SKIP');
+    expect(decision.reason).toContain('Liquidity constraint');
+  });
+
+  it('caps trade size by remaining per-market exposure and available ask size', () => {
+    const config = { ...DEFAULT_CONFIG, tradeSize: 10, maxExposurePerMarketUsd: 5 };
+    const yesBook = makeBook({ asks: [ask(0.50, 3)] });
+    const noBook = makeBook({ asks: [ask(0.55, 50)] });
+
+    const decision = decideAccumulatorEntry(emptyPosition(), yesBook, noBook, config);
+
+    expect(decision.side).toBe('YES');
+    expect(decision.sizeShares).toBe(3);
+    expect(decision.sizeUsd).toBeCloseTo(1.5);
   });
 });

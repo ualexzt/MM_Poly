@@ -61,20 +61,23 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
       const books = orderbooks.get(market.conditionId);
       if (!books) continue;
 
-      // Skip if already have position in this market
       const existing = tracker.getPosition(market.conditionId);
-      if (existing && (existing.yesQty > 0 || existing.noQty > 0)) {
-        continue;
-      }
-
-      const pos: Position = { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
+      const pos: Position = existing
+        ? {
+          yesQty: existing.yesQty,
+          noQty: existing.noQty,
+          avgYesPrice: existing.avgYesPrice,
+          avgNoPrice: existing.avgNoPrice,
+        }
+        : { yesQty: 0, noQty: 0, avgYesPrice: 0, avgNoPrice: 0 };
+      const marketExposureUsd = existing ? existing.totalYesCostUsd + existing.totalNoCostUsd : 0;
 
       // Check risk
       const openOrders = await orderManager.getOpenOrders();
       const risk = checkRisk({
         config: riskConfig,
         totalExposureUsd: tracker.getTotalExposureUsd(),
-        marketExposureUsd: 0,
+        marketExposureUsd,
         openOrderCount: openOrders.length,
         currentBalanceUsd,
       });
@@ -84,13 +87,17 @@ export async function runAccumulatorCycle(input: AccumulatorCycleInput): Promise
         continue;
       }
 
-      // Try accumulator (new entry)
+      // Original Gabagool accumulator: evaluate current position averages and execute one best opportunity.
       const accDecision = decideAccumulatorEntry(pos, books.yes, books.no, accumulatorConfig);
       if (accDecision.side !== 'SKIP') {
         const tokenId = accDecision.side === 'YES' ? market.yesTokenId : market.noTokenId;
-        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeUsd });
+        const result = await orderManager.placeLimitOrder({ tokenId, side: 'BUY', price: accDecision.limitPrice, size: accDecision.sizeShares });
+        if (result.status === 'LIVE' && result.orderId) {
+          tracker.updateFill(market.conditionId, accDecision.side, accDecision.limitPrice, accDecision.sizeShares);
+        }
         logger.write({ eventType: 'accumulator_entry', marketId: market.conditionId, ...accDecision, orderId: result.orderId });
         decisions.push(accDecision);
+        break;
       }
     }
 
